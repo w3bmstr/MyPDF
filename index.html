@@ -1782,7 +1782,7 @@ $('settings-btn').addEventListener('click', () => {
 });
 
 /* ── Mobile toolbar toggle ── */
-let mobileToolsOpen = isCompactUi();
+let mobileToolsOpen = false;
 $('mobile-toolbar-toggle')?.addEventListener('click', () => {
   mobileToolsOpen = !mobileToolsOpen;
   syncMobileFeatureBars();

@@ -1637,10 +1637,11 @@ const SIG_FONTS = [
 /* ── State ── */
 let pdfDoc = null, loadedPages = [], inkCanvases = [], pageContainers = [];
 let thumbCanvases = [], currentPageIdx = 0, history = [];
-let renderScale = 1.5, rotation = 0, zoomCss = 1.0, mode = 'pen';
+let renderScale = 1.5, rotation = 0, zoomCss = 1.0, mode = 'scroll';
 let placedSigs = [], savedSigs = [], pendingSigUrl = null;
 let selFont = SIG_FONTS[0], drawHasInk = false;
 let sigDrawHistory = [], sigDrawRedo = [];
+let modeBeforeSigPlace = 'scroll';
 let mobileFormMode = 'fill';
 let bookmarks = [], comments = [], pdfOutline = [], pdfLayers = [], pdfOCConfig = null;
 let annotatedPages = new Map();
@@ -1765,7 +1766,6 @@ function setMode(m) {
   document.body.style.cursor = drawActive ? 'crosshair' : '';
 }
 toolDefs.forEach(({ id, m }) => $(id)?.addEventListener('click', () => m === 'sign' ? openSigModal() : setMode(m)));
-setMode('scroll');
 
 /* ── Dark mode ── */
 let lightMode = false;
@@ -2717,6 +2717,7 @@ $('sig-place-btn').addEventListener('click', () => {
 const ghostEl = $('sig-ghost');
 
 function enterSigPlaceMode() {
+  modeBeforeSigPlace = ['scroll','pen','highlight','eraser'].includes(mode) ? mode : 'scroll';
   mode = 'sigPlace';
   document.body.classList.add('sig-place-active');
   $('sig-place-hint').style.display = 'block';
@@ -2754,7 +2755,7 @@ function enablePageClick(container, pi) {
     placedSigs.push(sig);
     attachSigEl(sig);
     logAnnotation(sig.pi, 'sig');
-    cancelSigPlace(); setMode('pen');
+    cancelSigPlace(); setMode(modeBeforeSigPlace);
   });
 }
 

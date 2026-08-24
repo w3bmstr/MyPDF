@@ -2,8 +2,24 @@
 <html lang="en">
 <head>
   <title>PDF Viewer + Ink Editor</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Dancing+Script:wght@700&family=Pacifico&family=Sacramento&family=Caveat:wght@700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="description" content="A full-featured PDF viewer and editor that works entirely offline: annotate, sign, fill forms, redact, OCR, and convert PDFs — nothing leaves your device.">
+
+  <!-- PWA: installability + offline + fullscreen -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f1117">
+  <meta name="background-color" content="#0f1117">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PDF Editor">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+  <!-- Self-hosted fonts (no network needed) -->
+  <link href="fonts.css" rel="stylesheet">
   <style>
     :root {
       --bg-deep:   #0f1117;
@@ -1394,6 +1410,30 @@
       <button class="tb-btn icon-only feat-close" data-modal="modal-pro">✕</button>
     </div>
     <div class="feat-modal-body">
+      <div class="feat-section-title">App Settings</div>
+      <div class="feat-grid">
+        <div class="feat-card" id="fc-app-settings">
+          <span class="feat-card-icon">⚙️</span>
+          <div class="feat-card-title">App &amp; AI Settings</div>
+          <div class="feat-card-desc">Fullscreen, offline status, and your own API key for the AI Assistant.</div>
+        </div>
+      </div>
+      <div class="feat-sub-panel" id="sub-app-settings" style="display:none">
+        <h4>⚙️ App Settings</h4>
+        <div class="feat-row">
+          <button class="tb-btn" id="fullscreen-toggle-btn" type="button">⛶ Enter Fullscreen</button>
+          <span id="offline-status-badge" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
+        <p style="font-size:11px;color:var(--text-muted);margin:8px 0 14px">This app runs entirely in your browser and works fully offline once installed — nothing you open or edit is ever uploaded anywhere.</p>
+        <label>Anthropic API key <span style="color:var(--text-muted);font-weight:400">(only needed for the 🤖 AI Assistant tool)</span></label>
+        <input class="feat-input" id="settings-api-key" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+        <p style="font-size:11px;color:var(--text-muted);margin:6px 0 10px">Stored only in this browser and sent straight from your browser to Anthropic — it never passes through any server of ours. Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent-soft)">console.anthropic.com</a>. Every other tool in this app works with no key at all.</p>
+        <div class="feat-row">
+          <button class="tb-btn primary" id="save-api-key-btn" type="button">💾 Save Key</button>
+          <button class="tb-btn" id="clear-api-key-btn" type="button">🗑️ Clear Key</button>
+        </div>
+      </div>
+
       <div class="feat-section-title">Document Tools</div>
       <div class="feat-grid">
         <div class="feat-card" id="fc-metadata-pro">
@@ -1615,16 +1655,16 @@
   <button class="tb-btn primary" id="mobile-field-done-btn" type="button">Done</button>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/pptxgen.bundle.js"></script>
+<script src="vendor/tesseract.min.js"></script>
 <script>
 'use strict';
 
 if (window.pdfjsLib) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
 }
 
 const SIG_FONTS = [
@@ -3745,6 +3785,17 @@ $('ocr-download-btn')?.addEventListener('click', () => {
 
 /* Tesseract OCR */
 $('fc-ocr-tesseract')?.addEventListener('click', () => toggleSubPanel('sub-ocr-tesseract', $('fc-ocr-tesseract')));
+function tesseractLocalOpts(lang) {
+  return {
+    workerPath: 'vendor/tesseract-worker.min.js',
+    corePath: 'vendor/tesseract-core',
+    // English trained data ships locally, so English OCR works with zero network calls.
+    // Other languages are fetched once from Tesseract's public data CDN, and the service
+    // worker then caches them for offline use afterwards (bundling every language locally
+    // would add hundreds of MB to the download).
+    langPath: lang === 'eng' ? 'vendor/tessdata' : 'https://tessdata.projectnaptha.com/4.0.0'
+  };
+}
 $('do-ocr-tesseract')?.addEventListener('click', async () => {
   if (!pdfDoc) { showToast('Open a PDF first'); return; }
   if (typeof Tesseract === 'undefined') { showToast('Tesseract is loading, try again in a moment'); return; }
@@ -3755,18 +3806,28 @@ $('do-ocr-tesseract')?.addEventListener('click', async () => {
   $('sub-ocr-result').style.display = 'block';
   $('ocr-text-output').value = 'Running OCR…';
   let result = '';
-  for (const pi of pages) {
-    prog.textContent = `Processing page ${pi + 1}…`;
-    const vp = loadedPages[pi].getViewport({ scale: 2 });
-    const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
-    await loadedPages[pi].render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-    const { data: { text } } = await Tesseract.recognize(c, lang, {
-      logger: m => { if (m.status === 'recognizing text') prog.textContent = `Page ${pi+1}: ${Math.round(m.progress*100)}%`; }
-    });
-    result += `\n\n── Page ${pi + 1} (Tesseract) ──\n${text}`;
+  try {
+    for (const pi of pages) {
+      prog.textContent = `Processing page ${pi + 1}…`;
+      const vp = loadedPages[pi].getViewport({ scale: 2 });
+      const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+      await loadedPages[pi].render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      const { data: { text } } = await Tesseract.recognize(c, lang, {
+        ...tesseractLocalOpts(lang),
+        logger: m => { if (m.status === 'recognizing text') prog.textContent = `Page ${pi+1}: ${Math.round(m.progress*100)}%`; }
+      });
+      result += `\n\n── Page ${pi + 1} (Tesseract) ──\n${text}`;
+    }
+    $('ocr-text-output').value = result.trim() || '(No text recognised)';
+    prog.textContent = 'Done!';
+  } catch (err) {
+    const offlineHint = (lang !== 'eng' && !navigator.onLine)
+      ? ' This language needs a one-time internet connection to fetch its OCR data (English works fully offline).'
+      : '';
+    prog.textContent = 'OCR failed.';
+    $('ocr-text-output').value = (result.trim() ? result.trim() + '\n\n' : '') + `⚠️ OCR stopped: ${err.message || err}.${offlineHint}`;
+    showToast('OCR failed — see details below');
   }
-  $('ocr-text-output').value = result.trim() || '(No text recognised)';
-  prog.textContent = 'Done!';
 });
 
 /* Enhance scan */
@@ -3830,6 +3891,45 @@ function stopCamera() {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
+   APP SETTINGS — fullscreen, offline status, local Anthropic API key
+════════════════════════════════════════════════════════════════════════════ */
+const AI_KEY_STORAGE_KEY = 'pdfeditor_anthropic_api_key';
+$('fc-app-settings')?.addEventListener('click', () => toggleSubPanel('sub-app-settings', $('fc-app-settings')));
+
+function updateFullscreenBtn() {
+  const btn = $('fullscreen-toggle-btn'); if (!btn) return;
+  btn.textContent = document.fullscreenElement ? '⛶ Exit Fullscreen' : '⛶ Enter Fullscreen';
+}
+$('fullscreen-toggle-btn')?.addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else document.documentElement.requestFullscreen?.().catch(() => showToast('Fullscreen not available in this browser'));
+});
+document.addEventListener('fullscreenchange', updateFullscreenBtn);
+updateFullscreenBtn();
+
+function updateOfflineBadge() {
+  const el = $('offline-status-badge'); if (!el) return;
+  el.textContent = navigator.onLine ? '🟢 Online' : '🟡 Offline — the app keeps working';
+}
+window.addEventListener('online', updateOfflineBadge);
+window.addEventListener('offline', updateOfflineBadge);
+updateOfflineBadge();
+
+const apiKeyInput = $('settings-api-key');
+if (apiKeyInput) apiKeyInput.value = localStorage.getItem(AI_KEY_STORAGE_KEY) || '';
+$('save-api-key-btn')?.addEventListener('click', () => {
+  const v = apiKeyInput.value.trim();
+  if (!v) { showToast('Enter a key first'); return; }
+  localStorage.setItem(AI_KEY_STORAGE_KEY, v);
+  showToast('API key saved on this device');
+});
+$('clear-api-key-btn')?.addEventListener('click', () => {
+  localStorage.removeItem(AI_KEY_STORAGE_KEY);
+  if (apiKeyInput) apiKeyInput.value = '';
+  showToast('API key cleared');
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
    AI ASSISTANT
 ════════════════════════════════════════════════════════════════════════════ */
 let aiChatHistory = [], aiDocContext = '';
@@ -3849,6 +3949,13 @@ function addAiMsg(role, text) {
 }
 async function sendAiMessage(question) {
   if (!question.trim()) return;
+  const apiKey = localStorage.getItem(AI_KEY_STORAGE_KEY);
+  if (!apiKey) {
+    addAiMsg('user', question);
+    $('ai-user-input').value = '';
+    addAiMsg('assistant', '🔑 Add your Anthropic API key in ⚙️ Settings → App & AI Settings to use the AI Assistant. Every other tool in this app works without one.');
+    return;
+  }
   if (!aiDocContext && pdfDoc) {
     const t = addAiMsg('thinking', '⏳ Reading document…');
     aiDocContext = await extractDocText(); t.remove();
@@ -3863,14 +3970,23 @@ async function sendAiMessage(question) {
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: systemPrompt, messages: aiChatHistory.slice(-10) })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 1000, system: systemPrompt, messages: aiChatHistory.slice(-10) })
     });
     const data = await resp.json();
+    if (!resp.ok) throw new Error(data?.error?.message || `Request failed (HTTP ${resp.status})`);
     const answer = data.content?.[0]?.text || 'Sorry, no response received.';
     thinking.remove(); addAiMsg('assistant', answer);
     aiChatHistory.push({ role: 'assistant', content: answer });
-  } catch (err) { thinking.remove(); addAiMsg('assistant', 'Error: ' + err.message); }
+  } catch (err) {
+    thinking.remove();
+    addAiMsg('assistant', '⚠️ ' + (err.message || 'Something went wrong reaching the AI.'));
+  }
 }
 $('ai-send-btn')?.addEventListener('click', () => sendAiMessage($('ai-user-input').value));
 $('ai-user-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendAiMessage(e.target.value); });
@@ -4118,6 +4234,28 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); $('undo-btn').click(); }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); $('redo-btn').click(); }
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveAsPDF(); }
+});
+
+/* ════════════════════════════════════════════════════════════════════════════
+   OFFLINE SUPPORT — register the service worker so the app (and every vendor
+   library it depends on) is cached for offline use. This only works when the
+   app is served over http(s) or localhost — service workers cannot register
+   from a file:// page, so this quietly does nothing in that case and the app
+   still runs normally (everything else is already local, so it needs no
+   network either way; it just won't show an "Install" option from file://).
+════════════════════════════════════════════════════════════════════════════ */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('Service worker registration failed:', err));
+  });
+}
+
+// Surface the browser's native "Install app" prompt as a toast the first time it's available.
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showToast('This app can be installed — use your browser\'s Install option', 4000);
 });
 </script>
 </body>

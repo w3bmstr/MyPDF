@@ -1655,16 +1655,71 @@
   <button class="tb-btn primary" id="mobile-field-done-btn" type="button">Done</button>
 </div>
 
-<script src="vendor/pdf.min.js"></script>
-<script src="vendor/pdf-lib.min.js"></script>
-<script src="vendor/xlsx.full.min.js"></script>
-<script src="vendor/pptxgen.bundle.js"></script>
-<script src="vendor/tesseract.min.js"></script>
 <script>
 'use strict';
 
-if (window.pdfjsLib) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
+const LIBRARY_CANDIDATES = {
+  pdfjs: [
+    'vendor/pdf.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+  ],
+  pdflib: [
+    'vendor/pdf-lib.min.js',
+    'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'
+  ],
+  xlsx: [
+    'vendor/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+  ],
+  pptx: [
+    'vendor/pptxgen.bundle.js',
+    'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js'
+  ],
+  tesseract: [
+    'vendor/tesseract.min.js',
+    'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'
+  ]
+};
+
+let libsReadyPromise = null;
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve(src);
+    script.onerror = () => reject(new Error('Failed to load: ' + src));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadFirstWorkingSource(sources, isReadyFn) {
+  for (const src of sources) {
+    try {
+      await loadScriptOnce(src);
+      if (isReadyFn()) return src;
+    } catch (_) {
+      // Try the next source.
+    }
+  }
+  return null;
+}
+
+async function ensureCoreLibraries() {
+  if (libsReadyPromise) return libsReadyPromise;
+  libsReadyPromise = (async () => {
+    const pdfJsLoaded = await loadFirstWorkingSource(LIBRARY_CANDIDATES.pdfjs, () => !!window.pdfjsLib);
+    const pdfLibLoaded = await loadFirstWorkingSource(LIBRARY_CANDIDATES.pdflib, () => !!window.PDFLib);
+
+    // Optional libraries: best effort only.
+    if (!window.XLSX) await loadFirstWorkingSource(LIBRARY_CANDIDATES.xlsx, () => !!window.XLSX);
+    if (!window.PptxGenJS) await loadFirstWorkingSource(LIBRARY_CANDIDATES.pptx, () => !!window.PptxGenJS);
+    if (!window.Tesseract) await loadFirstWorkingSource(LIBRARY_CANDIDATES.tesseract, () => !!window.Tesseract);
+
+    return !!pdfJsLoaded && !!pdfLibLoaded;
+  })();
+  return libsReadyPromise;
 }
 
 const SIG_FONTS = [
@@ -1854,17 +1909,23 @@ async function openPdfFile(file) {
   if (file.type && file.type !== 'application/pdf' && !file.name?.toLowerCase().endsWith('.pdf')) {
     showToast('That doesn\u2019t look like a PDF file'); return;
   }
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.pdfjsLib) {
+    showToast('PDF engine could not load. Add vendor files or connect to the internet.', 4200);
+    return;
+  }
   showLoadOverlay('Loading PDF…');
   try {
     const buf = await file.arrayBuffer();
     let doc;
+    const openOpts = { data: buf, disableWorker: true };
     try {
-      doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      doc = await pdfjsLib.getDocument(openOpts).promise;
     } catch (err) {
       if (err?.name === 'PasswordException') {
         const pw = window.prompt('This PDF is password-protected. Enter the password:');
         if (pw == null) { hideLoadOverlay(); return; }
-        doc = await pdfjsLib.getDocument({ data: buf, password: pw }).promise;
+        doc = await pdfjsLib.getDocument({ ...openOpts, password: pw }).promise;
       } else {
         throw err;
       }
@@ -2351,6 +2412,11 @@ $('redo-btn').addEventListener('click', () => {
 async function saveAsPDF() {
   if (!pdfDoc) {
     alert('No PDF loaded. Please open a PDF before saving.');
+    return;
+  }
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) {
+    showToast('Save tools are unavailable. Ensure PDF libraries are loaded.', 3800);
     return;
   }
   try {
@@ -3430,11 +3496,13 @@ function selectFormOverlay(targetEl = null) {
   document.querySelectorAll('.form-field-overlay.selected').forEach(el => el.classList.remove('selected'));
   if (targetEl) targetEl.classList.add('selected');
 }
-function focusNextFormField(currentField) {
+function focusAdjacentFormField(currentField, direction = 1) {
   const fields = Array.from(document.querySelectorAll('.form-field-overlay input, .form-field-overlay select, .form-field-overlay textarea'));
   const i = fields.indexOf(currentField);
-  if (i < 0 || i === fields.length - 1) return;
-  const next = fields[i + 1];
+  if (i < 0) return;
+  const nextIndex = i + (direction >= 0 ? 1 : -1);
+  if (nextIndex < 0 || nextIndex >= fields.length) return;
+  const next = fields[nextIndex];
   next.focus();
   if (typeof next.select === 'function') next.select();
 }
@@ -3607,10 +3675,15 @@ function placeFormField(container, lPct, tPct, type, label, placeholder, opts = 
   field.addEventListener('input', () => applyFieldValidation(el, field));
   if (field.type === 'checkbox') field.addEventListener('change', () => applyFieldValidation(el, field));
   field.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      focusAdjacentFormField(field, e.shiftKey ? -1 : 1);
+      return;
+    }
     if (e.key !== 'Enter' || type === 'checkbox' || type === 'dropdown') return;
     if (!autoNextEnabled) return;
     e.preventDefault();
-    focusNextFormField(field);
+    focusAdjacentFormField(field, 1);
   });
 
   setFieldLocked(el, !!opts.locked);
@@ -3638,7 +3711,7 @@ $('mobile-field-done-btn')?.addEventListener('click', () => {
 });
 $('mobile-field-next-btn')?.addEventListener('click', () => {
   if (!activeFormField) return;
-  focusNextFormField(activeFormField);
+  focusAdjacentFormField(activeFormField, 1);
 });
 
 /* Export form data as CSV */

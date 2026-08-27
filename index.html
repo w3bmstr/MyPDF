@@ -464,6 +464,22 @@
       background: rgba(79,142,247,.08); cursor: move; z-index: 15; min-width: 80px; min-height: 24px;
       transition: border-color .12s, box-shadow .12s, background .12s;
     }
+    .form-field-overlay.native-field {
+      cursor: text;
+      border: 2px solid #4f8ef7 !important;
+      background: rgba(79,142,247,.16) !important;
+      box-shadow: 0 0 0 2px rgba(79,142,247,.25), 0 2px 8px rgba(0,0,0,.15);
+      z-index: 25 !important;
+    }
+    .form-field-overlay.native-field:hover,
+    .form-field-overlay.native-field.selected {
+      background: rgba(79,142,247,.28) !important;
+      border-color: #7aa7ff !important;
+      box-shadow: 0 0 0 3px rgba(79,142,247,.4), 0 2px 12px rgba(79,142,247,.3);
+    }
+    .form-field-overlay.native-field .form-field-input {
+      background: rgba(255,255,255,0.95) !important;
+    }
     .form-field-overlay:hover { background: rgba(79,142,247,.15); }
     .form-field-overlay.selected {
       border-color: var(--accent-soft);
@@ -778,6 +794,7 @@
     <button class="tb-btn" id="open-btn">📂 Open</button>
     <button class="tb-btn" id="save-btn">💾 Save</button>
     <button class="tb-btn" id="export-btn">⬇️ Export</button>
+    <button class="tb-btn danger" id="clear-data-btn" title="Clear all form field values" style="display:none">🗑️ Clear Data</button>
     <div class="topbar-spacer"></div>
     <div class="top-divider"></div>
     <button id="mobile-toolbar-toggle" title="Toggle drawing tools">🎨 Tools</button>
@@ -1770,10 +1787,14 @@ function ensureMobileFormModeByContent() {
   else if (!['fill', 'arrange'].includes(mobileFormMode)) mobileFormMode = 'fill';
 }
 function syncMobileFormModeUi() {
+  const hasFields = getFormFieldCount() > 0;
+  // Always show toolbar Clear Data when any form fields exist
+  const clearBtn = $('clear-data-btn');
+  if (clearBtn) clearBtn.style.display = hasFields ? '' : 'none';
+
   const btn = $('mobile-form-mode-btn');
   if (!btn) return;
   const compact = isCompactUi();
-  const hasFields = getFormFieldCount() > 0;
   btn.style.display = compact && hasFields ? 'flex' : 'none';
   if (!compact) {
     document.body.classList.remove('mobile-form-fill', 'mobile-form-arrange');
@@ -1918,7 +1939,8 @@ async function openPdfFile(file) {
   try {
     const buf = await file.arrayBuffer();
     let doc;
-    const openOpts = { data: buf, disableWorker: true };
+    // enableXfa: critical for CRA / government XFA forms (like TD1) so fields become interactive
+    const openOpts = { data: buf, disableWorker: true, enableXfa: true };
     try {
       doc = await pdfjsLib.getDocument(openOpts).promise;
     } catch (err) {
@@ -1931,6 +1953,8 @@ async function openPdfFile(file) {
       }
     }
     pdfDoc = doc;
+    // Remember whether this is an XFA form (many Canadian government forms are)
+    window._pdfIsXfa = !!(doc.isPureXfa || (doc.allXfaHtml && doc.allXfaHtml.length));
     $('empty-state')?.remove();
     loadedPages = [];
     for (let i = 1; i <= pdfDoc.numPages; i++) loadedPages.push(await pdfDoc.getPage(i));
@@ -1987,6 +2011,7 @@ dropTarget?.addEventListener('drop', e => {
 async function renderAll(snapshots = null) {
   const showThumbRail = shouldShowThumbs();
   placedSigs.forEach(s => s.el?.remove());
+  if (typeof clearNativeFormFields === 'function') clearNativeFormFields();
   $('pages-wrapper').innerHTML = '';
   $('thumbs').innerHTML = '';
   inkCanvases = []; pageContainers = []; thumbCanvases = [];
@@ -2011,11 +2036,19 @@ async function renderAll(snapshots = null) {
     $('pages-wrapper').appendChild(wrap);
     pageContainers.push(wrap); inkCanvases.push(inkC);
 
-    const pdfRenderOpts = { canvasContext: pdfC.getContext('2d'), viewport: vp };
+    const pdfRenderOpts = {
+      canvasContext: pdfC.getContext('2d'),
+      viewport: vp,
+      // Prefer interactive forms when the PDF.js build supports AnnotationMode
+      annotationMode: (window.pdfjsLib && pdfjsLib.AnnotationMode)
+        ? pdfjsLib.AnnotationMode.ENABLE_FORMS
+        : undefined
+    };
     if (pdfOCConfig) pdfRenderOpts.optionalContentConfigPromise = Promise.resolve(pdfOCConfig);
     await page.render(pdfRenderOpts).promise;
     enableDrawing(inkC, i);
     enablePageClick(wrap, i);
+    if (typeof renderNativeFormFields === 'function') await renderNativeFormFields(page, wrap, vp, i);
     if (snapshots?.[i]) await loadUrl(inkC, snapshots[i]);
 
     if (showThumbRail) {
@@ -2032,9 +2065,190 @@ async function renderAll(snapshots = null) {
   }
   $('thumbs').style.display = showThumbRail && navItems[0].btn?.getAttribute('aria-current') === 'page' ? '' : 'none';
   placedSigs.forEach(s => attachSigEl(s));
+  // For known XFA government forms (CRA TD1 etc.) that PDF.js does not expose as Widgets,
+  // auto-place editable HTML fields at the correct positions so the form is immediately fillable.
+  if ((!nativeFormFields || !nativeFormFields.length) && pageContainers[0]) {
+    tryAutoPlaceKnownFormFields();
+  }
   ensureMobileFormModeByContent();
   syncMobileFormModeUi();
   if (isCompactUi()) applyFitWidth(true);
+  if (typeof setMode === 'function') setMode('scroll');
+  if (typeof nativeFormFields !== 'undefined' && nativeFormFields.length) {
+    showToast(`✓ ${nativeFormFields.length} fillable field${nativeFormFields.length > 1 ? 's' : ''} ready — blue boxes are editable. Click or Tab to type.`, 4500);
+  } else if (pdfDoc) {
+    const isXfa = !!(window._pdfIsXfa);
+    showToast(
+      isXfa
+        ? 'XFA form detected (common for CRA/gov forms). Blue boxes have been placed on the main fields — click to type, or use 📝 Forms to add more.'
+        : 'No built-in form fields detected. Use 📝 Forms → Text Field and click the document to place fillable boxes, or use Pen / Sign tools.',
+      5000
+    );
+  }
+}
+
+/* Auto-place fields for well-known fillable forms that use XFA (PDF.js often hides them) */
+function tryAutoPlaceKnownFormFields() {
+  if (!pageContainers.length) return;
+  const name = ($('status-file')?.textContent || '').toLowerCase();
+  const titleHint = (pdfDoc?.getMetadata?.() && false) || name; // filename is enough
+  const isTd1 = /td1|personal.?tax.?credits|tax.?credits.?return/i.test(name) ||
+                /td1-fill/i.test(name);
+  if (!isTd1) return;
+
+  // Approximate positions as % of page (letter size, based on official TD1 layout)
+  // These cover the identification block + the 13 amount lines on page 1.
+  const page0 = pageContainers[0];
+  const fields = [
+    // Identification row
+    { l: 3.5,  t: 14.8, w: 28, h: 2.6, label: 'Last name', type: 'text' },
+    { l: 32.5, t: 14.8, w: 22, h: 2.6, label: 'First name and initial(s)', type: 'text' },
+    { l: 55.5, t: 14.8, w: 18, h: 2.6, label: 'Date of birth (YYYY/MM/DD)', type: 'text' },
+    { l: 74.5, t: 14.8, w: 22, h: 2.6, label: 'Employee number', type: 'text' },
+    // Address row
+    { l: 3.5,  t: 18.5, w: 42, h: 2.6, label: 'Address', type: 'text' },
+    { l: 46.5, t: 18.5, w: 14, h: 2.6, label: 'Postal code', type: 'text' },
+    { l: 61.5, t: 18.5, w: 16, h: 2.6, label: 'Country (non-residents)', type: 'text' },
+    { l: 78.5, t: 18.5, w: 18, h: 2.6, label: 'Social insurance number', type: 'text' },
+    // Amount lines 1–13 (right-hand column of the form)
+    { l: 78, t: 23.5, w: 18.5, h: 2.4, label: '1. Basic personal amount', type: 'number' },
+    { l: 78, t: 29.0, w: 18.5, h: 2.4, label: '2. Caregiver (children)', type: 'number' },
+    { l: 78, t: 34.0, w: 18.5, h: 2.4, label: '3. Age amount', type: 'number' },
+    { l: 78, t: 39.0, w: 18.5, h: 2.4, label: '4. Pension income', type: 'number' },
+    { l: 78, t: 43.5, w: 18.5, h: 2.4, label: '5. Tuition', type: 'number' },
+    { l: 78, t: 48.0, w: 18.5, h: 2.4, label: '6. Disability amount', type: 'number' },
+    { l: 78, t: 53.0, w: 18.5, h: 2.4, label: '7. Spouse amount', type: 'number' },
+    { l: 78, t: 58.5, w: 18.5, h: 2.4, label: '8. Eligible dependant', type: 'number' },
+    { l: 78, t: 64.0, w: 18.5, h: 2.4, label: '9. Caregiver (adult)', type: 'number' },
+    { l: 78, t: 69.5, w: 18.5, h: 2.4, label: '10. Caregiver 18+', type: 'number' },
+    { l: 78, t: 74.5, w: 18.5, h: 2.4, label: '11. Transferred (spouse)', type: 'number' },
+    { l: 78, t: 79.5, w: 18.5, h: 2.4, label: '12. Transferred (dependant)', type: 'number' },
+    { l: 78, t: 85.0, w: 18.5, h: 2.6, label: '13. TOTAL CLAIM AMOUNT', type: 'number' },
+  ];
+
+  function placeSizedField(container, f) {
+    if (typeof placeFormField !== 'function') return;
+    placeFormField(container, f.l, f.t, f.type === 'number' ? 'number' : 'text', f.label, '', {
+      required: false,
+      validation: f.type === 'number' ? 'numeric' : 'none'
+    });
+    // Override default pixel size with percentage so it matches the form layout at any zoom
+    const el = container.querySelector('.form-field-overlay:last-child');
+    if (el) {
+      el.style.width = f.w + '%';
+      el.style.height = f.h + '%';
+      el.classList.add('native-field');
+      el.dataset.native = 'auto';
+    }
+  }
+
+  fields.forEach(f => placeSizedField(page0, f));
+
+  // Page 2 – a few key fields
+  if (pageContainers[1]) {
+    const page1 = pageContainers[1];
+    [
+      { l: 78, t: 48, w: 16, h: 2.5, label: 'Prescribed zone deduction', type: 'number' },
+      { l: 78, t: 56, w: 16, h: 2.5, label: 'Additional tax to deduct', type: 'number' },
+      { l: 55, t: 88, w: 20, h: 2.8, label: 'Date (YYYY/MM/DD)', type: 'text' },
+    ].forEach(f => placeSizedField(page1, f));
+  }
+
+  // Register auto-placed fields so toast / save logic sees them
+  document.querySelectorAll('.form-field-overlay[data-native="auto"]').forEach(el => {
+    if (nativeFormFields.some(f => f.el === el)) return;
+    nativeFormFields.push({
+      el,
+      pageIndex: +el.closest('.page-container')?.dataset.pageIndex || 0,
+      fieldName: el.dataset.label || 'field',
+      type: el.dataset.type || 'text',
+      input: el.querySelector('input, textarea, select')
+    });
+  });
+
+  // Wire the form's own "Clear Data" button (top-right on each page).
+  // Use a generous hit zone so it reliably covers the printed control.
+  placeClearDataButton(page0, 82, 0.3, 17, 3.5);
+  if (pageContainers[1]) {
+    placeClearDataButton(pageContainers[1], 82, 0.3, 17, 3.5);
+  }
+  // Show the toolbar Clear Data button whenever we have form fields
+  const clearBtn = $('clear-data-btn');
+  if (clearBtn) clearBtn.style.display = nativeFormFields.length ? '' : 'none';
+}
+
+function clearAllFormFieldValues() {
+  let cleared = 0;
+  document.querySelectorAll('.form-field-overlay input, .form-field-overlay textarea, .form-field-overlay select').forEach(input => {
+    let changed = false;
+    if (input.type === 'checkbox' || input.type === 'radio') {
+      if (input.checked) { input.checked = false; changed = true; }
+    } else {
+      if (input.value) { input.value = ''; changed = true; }
+    }
+    if (changed) {
+      cleared++;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    // remove invalid styling
+    input.closest('.form-field-overlay')?.classList.remove('invalid');
+  });
+  (nativeFormFields || []).forEach(nf => {
+    if (!nf.input) return;
+    if (nf.input.type === 'checkbox' || nf.input.type === 'radio') nf.input.checked = false;
+    else nf.input.value = '';
+  });
+  showToast(cleared ? `Clear Data — ${cleared} field${cleared > 1 ? 's' : ''} cleared` : 'Clear Data — all fields already empty', 2500);
+}
+
+// Toolbar button
+$('clear-data-btn')?.addEventListener('click', () => clearAllFormFieldValues());
+
+function placeClearDataButton(container, leftPct, topPct, widthPct, heightPct) {
+  if (!container) return;
+  container.querySelectorAll('.clear-data-hit').forEach(el => el.remove());
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'clear-data-hit';
+  btn.title = 'Clear Data — reset all form fields';
+  btn.setAttribute('aria-label', 'Clear Data');
+  btn.style.cssText = [
+    'position:absolute',
+    `left:${leftPct}%`,
+    `top:${topPct}%`,
+    `width:${widthPct}%`,
+    `height:${heightPct}%`,
+    'z-index:40',
+    'margin:0',
+    'padding:0',
+    'border:1.5px solid transparent',
+    'background:transparent',
+    'cursor:pointer',
+    'border-radius:4px',
+    'transition:background .15s, box-shadow .15s, border-color .15s'
+  ].join(';');
+  btn.addEventListener('mouseenter', () => {
+    btn.style.background = 'rgba(224,82,82,.18)';
+    btn.style.borderColor = 'rgba(224,82,82,.55)';
+    btn.style.boxShadow = '0 0 0 2px rgba(224,82,82,.25)';
+  });
+  btn.addEventListener('mouseleave', () => {
+    btn.style.background = 'transparent';
+    btn.style.borderColor = 'transparent';
+    btn.style.boxShadow = 'none';
+  });
+  const activate = e => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearAllFormFieldValues();
+  };
+  btn.addEventListener('click', activate);
+  btn.addEventListener('pointerdown', e => { e.stopPropagation(); });
+  btn.addEventListener('mousedown', e => { e.stopPropagation(); });
+  // Touch support
+  btn.addEventListener('touchend', activate, { passive: false });
+  container.appendChild(btn);
 }
 
 function loadUrl(canvas, url) {
@@ -2449,20 +2663,122 @@ async function saveAsPDF() {
         img.src = s.url;
       });
     }
+    // Burn custom text overlays and non-native form field values into the ink composite
+    document.querySelectorAll('.page-container').forEach(container => {
+      const pi = +container.dataset.pageIndex;
+      if (pi < 0 || pi >= comps.length) return;
+      const ctx = comps[pi].getContext('2d');
+      const cw = comps[pi].width, ch = comps[pi].height;
+      const cr = container.getBoundingClientRect();
+      container.querySelectorAll('.text-overlay').forEach(to => {
+        const inner = to.querySelector('.text-overlay-inner');
+        if (!inner) return;
+        const r = to.getBoundingClientRect();
+        const x = (r.left - cr.left) / cr.width * cw;
+        const y = (r.top  - cr.top)  / cr.height * ch;
+        const style = window.getComputedStyle(inner);
+        ctx.save();
+        ctx.font = `${style.fontStyle} ${style.fontWeight} ${parseFloat(style.fontSize) * (cw / cr.width)}px ${style.fontFamily}`;
+        ctx.fillStyle = style.color || '#1a1a1a';
+        ctx.textBaseline = 'top';
+        const lines = (inner.innerText || '').split('\n');
+        const lineH = parseFloat(style.fontSize) * 1.4 * (cw / cr.width);
+        lines.forEach((line, li) => ctx.fillText(line, x + 2, y + 2 + li * lineH));
+        ctx.restore();
+      });
+      container.querySelectorAll('.form-field-overlay:not(.native-field)').forEach(ff => {
+        const input = ff.querySelector('input, select, textarea');
+        if (!input) return;
+        const r = ff.getBoundingClientRect();
+        const x = (r.left - cr.left) / cr.width * cw;
+        const y = (r.top  - cr.top)  / cr.height * ch;
+        const w = r.width  / cr.width  * cw;
+        const h = r.height / cr.height * ch;
+        ctx.save();
+        if (input.type === 'checkbox') {
+          ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+          ctx.strokeRect(x + 2, y + 2, Math.min(w, h) - 4, Math.min(w, h) - 4);
+          if (input.checked) {
+            ctx.beginPath();
+            ctx.moveTo(x + 4, y + h * 0.5);
+            ctx.lineTo(x + w * 0.4, y + h - 4);
+            ctx.lineTo(x + w - 4, y + 4);
+            ctx.strokeStyle = '#1a6b3a'; ctx.lineWidth = 2; ctx.stroke();
+          }
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = '#8fb4ff'; ctx.lineWidth = 1; ctx.strokeRect(x, y, w, h);
+          const val = input.tagName === 'SELECT' ? (input.selectedOptions[0]?.text || input.value) : (input.value || '');
+          if (val) {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.font = `${Math.max(10, h * 0.55)}px sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(val, x + 4, y + h / 2, w - 8);
+          }
+        }
+        ctx.restore();
+      });
+    });
     const raw    = await pdfDoc.getData();
     const libDoc = await PDFLib.PDFDocument.load(raw);
-    const pages  = libDoc.getPages();
-    for (let i = 0; i < pages.length; i++) {
-      if (!comps[i]) {
-        alert('Page ' + (i+1) + ' is missing its canvas and cannot be saved.');
-        continue;
+
+    // Fill native AcroForm fields from the interactive HTML overlays
+    try {
+      const form = libDoc.getForm();
+      const filledNames = new Set();
+      for (const nf of (nativeFormFields || [])) {
+        if (!nf.fieldName || !nf.input || filledNames.has(nf.fieldName)) continue;
+        try {
+          if (nf.type === 'text' || nf.type === 'textarea') {
+            const field = form.getTextField(nf.fieldName);
+            if (field) field.setText(nf.input.value || '');
+          } else if (nf.type === 'checkbox') {
+            const field = form.getCheckBox(nf.fieldName);
+            if (field) { if (nf.input.checked) field.check(); else field.uncheck(); }
+          } else if (nf.type === 'radio') {
+            const field = form.getRadioGroup(nf.fieldName);
+            if (field && nf.input.checked) field.select(nf.input.value);
+          } else if (nf.type === 'dropdown') {
+            const field = form.getDropdown(nf.fieldName) || form.getOptionList(nf.fieldName);
+            if (field) {
+              if (nf.input.multiple) {
+                const selected = Array.from(nf.input.selectedOptions).map(o => o.value);
+                if (selected.length) field.select(selected);
+              } else if (nf.input.value) {
+                field.select(nf.input.value);
+              }
+            }
+          }
+          filledNames.add(nf.fieldName);
+        } catch (fieldErr) {
+          console.warn('Could not fill field', nf.fieldName, fieldErr.message);
+        }
       }
-      const pngImg = await libDoc.embedPng(comps[i].toDataURL('image/png'));
-      const { width, height } = pages[i].getSize();
-      pages[i].drawImage(pngImg, { x: 0, y: 0, width, height });
+      try { form.updateFieldAppearances(); } catch (_) {}
+    } catch (formErr) {
+      console.warn('Form fill step skipped:', formErr.message);
+    }
+
+    const pages  = libDoc.getPages();
+    const hasCustomOverlays = document.querySelectorAll('.text-overlay, .form-field-overlay:not(.native-field)').length > 0;
+    const hasInkOrSigs = (placedSigs || []).length > 0 ||
+      inkCanvases.some((c, i) => (history[i]?.u?.length || 0) > 0) ||
+      hasCustomOverlays;
+
+    if (hasInkOrSigs) {
+      for (let i = 0; i < pages.length; i++) {
+        if (!comps[i]) {
+          alert('Page ' + (i+1) + ' is missing its canvas and cannot be saved.');
+          continue;
+        }
+        const pngImg = await libDoc.embedPng(comps[i].toDataURL('image/png'));
+        const { width, height } = pages[i].getSize();
+        pages[i].drawImage(pngImg, { x: 0, y: 0, width, height });
+      }
     }
     const blob = new Blob([await libDoc.save()], { type: 'application/pdf' });
-    Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'edited.pdf' }).click();
+    Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: hasInkOrSigs ? 'edited.pdf' : 'filled-form.pdf' }).click();
   } catch (err) {
     alert('Failed to save PDF: ' + (err?.message || err));
     console.error('Save PDF error:', err);
@@ -3402,6 +3718,184 @@ function downloadBlob(blob, filename, type) {
   const url = URL.createObjectURL(blob);
   Object.assign(document.createElement('a'), { href: url, download: filename }).click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   NATIVE FORM FIELDS (from existing fillable / AcroForm PDFs)
+════════════════════════════════════════════════════════════════════════════ */
+let nativeFormFields = []; // { el, pageIndex, fieldName, type, input }
+
+async function renderNativeFormFields(page, container, viewport, pageIndex) {
+  try {
+    const annotations = await page.getAnnotations({ intent: 'display' });
+    let widgetCount = 0;
+    for (const ann of annotations) {
+      // Accept Widget annotations, or any annotation that has a fieldName (some PDFs are non-standard)
+      const isWidget = ann.subtype === 'Widget' || ann.subtype === 'widget' || !!ann.fieldName;
+      if (!isWidget) continue;
+      widgetCount++;
+
+      const fieldName = (ann.fieldName || ann.id || `field_${pageIndex}_${widgetCount}`).toString();
+      if (!ann.rect || ann.rect.length < 4) continue;
+
+      let rect;
+      try {
+        rect = viewport.convertToViewportRectangle(ann.rect);
+      } catch (_) {
+        // Fallback manual transform if convert fails
+        const [x1, y1, x2, y2] = ann.rect;
+        const p1 = viewport.convertToViewportPoint(x1, y1);
+        const p2 = viewport.convertToViewportPoint(x2, y2);
+        rect = [p1[0], p1[1], p2[0], p2[1]];
+      }
+      const left   = Math.min(rect[0], rect[2]);
+      const top    = Math.min(rect[1], rect[3]);
+      const width  = Math.max(12, Math.abs(rect[2] - rect[0]));
+      const height = Math.max(14, Math.abs(rect[3] - rect[1]));
+
+      // Skip tiny or off-page fields
+      if (width < 8 || height < 8) continue;
+      if (left + width < 0 || top + height < 0) continue;
+
+      const el = document.createElement('div');
+      el.className = 'form-field-overlay native-field';
+      el.style.cssText = `left:${left}px;top:${top}px;width:${width}px;height:${height}px;z-index:25;`;
+      el.dataset.fieldName = fieldName;
+      el.dataset.pageIndex = pageIndex;
+      el.dataset.native = 'true';
+      el.title = fieldName + (ann.fieldType ? ` (${ann.fieldType})` : '');
+
+      // Normalize field type – PDF.js uses 'Tx','Btn','Ch','Sig' but some builds differ
+      let ft = (ann.fieldType || '').toString();
+      if (!ft) {
+        if (ann.checkBox || ann.radioButton) ft = 'Btn';
+        else if (ann.options) ft = 'Ch';
+        else if (ann.multiLine !== undefined || ann.maxLen !== undefined) ft = 'Tx';
+        else ft = 'Tx'; // default to text
+      }
+
+      let input = null;
+      let type = 'text';
+
+      if (ft === 'Tx' || ft === 'tx' || ft === 'text') {
+        type = ann.multiLine ? 'textarea' : 'text';
+        if (ann.multiLine) {
+          input = document.createElement('textarea');
+          input.rows = Math.max(1, Math.round(height / 16));
+        } else {
+          input = document.createElement('input');
+          input.type = 'text';
+          if (ann.maxLen) input.maxLength = ann.maxLen;
+        }
+        const val = ann.fieldValue != null ? ann.fieldValue : (ann.buttonValue != null ? ann.buttonValue : '');
+        input.value = val != null ? String(val) : '';
+        if (ann.readOnly) input.readOnly = true;
+      } else if (ft === 'Btn' || ft === 'btn' || ft === 'button') {
+        if (ann.checkBox || (ann.buttonValue !== undefined && !ann.radioButton && !ann.pushButton)) {
+          type = 'checkbox';
+          input = document.createElement('input');
+          input.type = 'checkbox';
+          const onVal = ann.exportValue || ann.buttonValue || 'Yes';
+          input.checked = !!(ann.fieldValue && String(ann.fieldValue) !== 'Off' && ann.fieldValue !== false && ann.fieldValue !== 'No');
+          input.dataset.exportValue = onVal;
+        } else if (ann.radioButton) {
+          type = 'radio';
+          input = document.createElement('input');
+          input.type = 'radio';
+          input.name = fieldName;
+          input.value = ann.buttonValue || ann.exportValue || 'On';
+          input.checked = !!(ann.fieldValue && String(ann.fieldValue) === String(input.value));
+        } else {
+          continue; // push button – skip
+        }
+      } else if (ft === 'Ch' || ft === 'ch' || ft === 'choice') {
+        type = 'dropdown';
+        input = document.createElement('select');
+        const opts = ann.options || [];
+        if (!opts.length && ann.fieldValue != null) {
+          const o = document.createElement('option');
+          o.value = o.textContent = String(ann.fieldValue);
+          o.selected = true;
+          input.appendChild(o);
+        } else {
+          opts.forEach(opt => {
+            const o = document.createElement('option');
+            const disp = opt.displayValue != null ? opt.displayValue : (opt.exportValue || '');
+            const exp  = opt.exportValue  != null ? opt.exportValue  : disp;
+            o.value = exp;
+            o.textContent = disp;
+            if (String(ann.fieldValue) === String(exp) || String(ann.fieldValue) === String(disp)) o.selected = true;
+            input.appendChild(o);
+          });
+        }
+        if (ann.multiSelect) input.multiple = true;
+      } else if (ft === 'Sig' || ft === 'sig' || ft === 'signature') {
+        el.classList.add('sig-field-placeholder');
+        el.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--accent);opacity:.85;border:1.5px dashed var(--accent);border-radius:3px;background:rgba(79,142,247,.10)">✍ Sign here</div>';
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!(mode === 'sigPlace' && pendingSigUrl)) openSigModal();
+        });
+        container.appendChild(el);
+        nativeFormFields.push({ el, pageIndex, fieldName, type: 'sig', input: null });
+        continue;
+      } else {
+        // Unknown type – still show an editable text field so the area is usable
+        input = document.createElement('input');
+        input.type = 'text';
+        input.value = (ann.fieldValue != null ? String(ann.fieldValue) : '') || '';
+        input.placeholder = fieldName;
+      }
+
+      if (!input) continue;
+
+      input.className = 'form-field-input';
+      input.style.cssText = 'width:100%;height:100%;box-sizing:border-box;font-size:12px;padding:1px 4px;background:rgba(255,255,255,0.92);';
+      if (type === 'checkbox' || type === 'radio') {
+        input.style.width = '18px';
+        input.style.height = '18px';
+        input.style.margin = 'auto';
+        input.style.display = 'block';
+        input.style.background = 'transparent';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+        el.style.background = 'rgba(79,142,247,.15)';
+      }
+
+      // Keep form interaction above drawing tools
+      input.addEventListener('pointerdown', e => e.stopPropagation());
+      input.addEventListener('mousedown', e => e.stopPropagation());
+      input.addEventListener('click', e => e.stopPropagation());
+      el.addEventListener('pointerdown', e => e.stopPropagation());
+
+      el.appendChild(input);
+      container.appendChild(el);
+      nativeFormFields.push({ el, pageIndex, fieldName, type, input });
+
+      input.addEventListener('focus', () => {
+        if (typeof selectFormOverlay === 'function') selectFormOverlay(el);
+        activeFormField = input;
+        if (typeof updateDoneBar === 'function') updateDoneBar();
+      });
+      input.addEventListener('blur', () => {
+        if (activeFormField === input) {
+          activeFormField = null;
+          if (typeof updateDoneBar === 'function') updateDoneBar();
+        }
+      });
+    }
+    if (pageIndex === 0 && annotations.length > 0 && widgetCount === 0) {
+      console.info('[PDF Editor] Page has', annotations.length, 'annotations but no Widget/form fields. This PDF may not be a fillable AcroForm.');
+    }
+  } catch (err) {
+    console.warn('Native form field render failed for page', pageIndex + 1, err);
+  }
+}
+
+function clearNativeFormFields() {
+  nativeFormFields.forEach(f => f.el?.remove());
+  nativeFormFields = [];
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

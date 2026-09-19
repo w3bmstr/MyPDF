@@ -1,0 +1,22 @@
+{
+  "name": "PDF Viewer + Ink Editor",
+  "short_name": "PDF Editor",
+  "description": "A full-featured PDF viewer and editor that works entirely offline: annotate, sign, fill forms, redact, OCR, and convert PDFs — nothing leaves your device.",
+  "start_url": "./index.html",
+  "id": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#0f1117",
+  "theme_color": "#0f1117",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    { "src": "icons/favicon-16.png", "sizes": "16x16", "type": "image/png" },
+    { "src": "icons/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

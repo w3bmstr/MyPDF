@@ -338,7 +338,7 @@
     /* ══════════════════════════════════════════════════════════
        PLACED SIGNATURE
     ══════════════════════════════════════════════════════════ */
-    .placed-sig { position: absolute; cursor: move; border: 1.5px dashed transparent; border-radius: 3px; z-index: 10; transition: border-color .1s; }
+    .placed-sig { position: absolute; cursor: move; border: 1.5px dashed transparent; border-radius: 3px; z-index: 10; transition: border-color .1s; touch-action: none; }
     .placed-sig:hover, .placed-sig.sel { border-color: var(--accent); }
     .placed-sig img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; user-select: none; }
     .sig-ctrl-bar { position: absolute; top: -24px; right: 0; display: none; gap: 3px; }
@@ -346,7 +346,7 @@
     .sig-ctrl-btn { height: 20px; padding: 0 6px; font-size: 10px; border-radius: 4px; border: 1px solid transparent; background: var(--bg-base); color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
     .sig-ctrl-btn:hover { background: var(--bg-hover); color: var(--text); }
     .sig-ctrl-btn.del { background: var(--danger); color: #fff; border-color: var(--danger); }
-    .sig-resize-h { position: absolute; bottom: -6px; right: -6px; width: 14px; height: 14px; background: var(--accent); border: 2.5px solid #fff; border-radius: 3px; cursor: se-resize; display: none; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+    .sig-resize-h { position: absolute; bottom: -6px; right: -6px; width: 14px; height: 14px; background: var(--accent); border: 2.5px solid #fff; border-radius: 3px; cursor: se-resize; display: none; box-shadow: 0 1px 4px rgba(0,0,0,.3); touch-action: none; }
     .placed-sig:hover .sig-resize-h, .placed-sig.sel .sig-resize-h { display: block; }
 
     /* ── Ghost cursor when placing ── */
@@ -587,7 +587,7 @@
     /* Text edit overlays */
     .text-overlay {
       position: absolute; z-index: 15; cursor: text; min-width: 60px; min-height: 22px;
-      border: 1.5px dashed transparent;
+      border: 1.5px dashed transparent; touch-action: none;
     }
     .text-overlay:hover, .text-overlay.editing { border-color: var(--accent); }
     .text-overlay-inner {
@@ -620,7 +620,7 @@
     .security-option-ctrl { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 
     /* Redact tool bar */
-    body.redact-mode .ink-layer { cursor: crosshair; }
+    body.redact-mode .ink-layer { cursor: crosshair; touch-action: none; }
     .redact-active-bar { display: none; position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: var(--danger); color: #fff; padding: 9px 22px; border-radius: 24px; font-size: 13px; z-index: 200; pointer-events: none; box-shadow: 0 4px 20px rgba(224,82,82,.5); white-space: nowrap; }
     body.redact-mode .redact-active-bar { display: block; }
 
@@ -1043,8 +1043,37 @@
           <div class="feat-card-title">Plain Text (.txt)</div>
           <div class="feat-card-desc">Extract all text from the PDF as a plain text file.</div>
         </div>
+        <div class="feat-card" id="fc-blank-pdf">
+          <span class="feat-card-icon">🆕</span>
+          <div class="feat-card-title">Blank PDF</div>
+          <div class="feat-card-desc">Start a brand-new PDF from scratch — pick a size, orientation &amp; page count.</div>
+        </div>
       </div>
       <!-- Sub-panels -->
+      <div class="feat-sub-panel" id="sub-blank-pdf" style="display:none">
+        <h4>🆕 New Blank PDF</h4>
+        <div class="feat-row">
+          <label style="margin:0;font-size:11px;color:var(--text-muted)">Page size</label>
+          <select class="feat-input" id="blank-pdf-size" style="width:110px;margin:0">
+            <option value="letter" selected>Letter</option>
+            <option value="a4">A4</option>
+            <option value="legal">Legal</option>
+            <option value="square">Square</option>
+          </select>
+          <label style="margin:0;font-size:11px;color:var(--text-muted)">Orientation</label>
+          <select class="feat-input" id="blank-pdf-orientation" style="width:100px;margin:0">
+            <option value="portrait" selected>Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+        <div class="feat-row" style="margin-top:8px">
+          <label style="margin:0;font-size:11px;color:var(--text-muted)">Pages</label>
+          <input class="feat-input" type="number" id="blank-pdf-pages" value="1" min="1" max="200" style="width:70px;margin:0">
+          <label style="margin:0;font-size:11px;color:var(--text-muted)">Background</label>
+          <input class="feat-input" type="color" id="blank-pdf-bg" value="#ffffff" style="width:44px;padding:2px;margin:0">
+        </div>
+        <button class="tb-btn primary" id="do-blank-pdf" style="margin-top:8px">🆕 Create &amp; Open</button>
+      </div>
       <div class="feat-sub-panel" id="sub-export-images" style="display:none">
         <h4>🖼️ Export Pages as PNG</h4>
         <div class="feat-row">
@@ -1329,7 +1358,7 @@
         <div class="feat-card" id="fc-camera-scan">
           <span class="feat-card-icon">📱</span>
           <div class="feat-card-title">Scan from Camera</div>
-          <div class="feat-card-desc">Capture a document with your camera and add it as a PDF page.</div>
+          <div class="feat-card-desc">Use your phone's own camera app (flash, focus &amp; all) to scan pages into a PDF.</div>
         </div>
       </div>
       <!-- OCR language selector for Tesseract -->
@@ -1366,18 +1395,31 @@
           <button class="tb-btn" id="ocr-download-btn">⬇️ Save as .txt</button>
         </div>
       </div>
-      <!-- Camera sub-panel -->
+      <!-- Camera sub-panel: uses the device's native camera app via <input capture>, so flash/focus/HDR
+           all work exactly like the phone's own Camera app — far more reliable than an in-page video feed. -->
       <div class="feat-sub-panel" id="sub-camera-scan" style="display:none">
-        <h4>📱 Camera Scan</h4>
-        <video id="camera-video" style="width:100%;border-radius:6px;background:#000;max-height:220px" autoplay playsinline></video>
-        <canvas id="camera-canvas" style="display:none"></canvas>
-        <div class="feat-row" style="margin-top:8px">
-          <button class="tb-btn primary" id="camera-capture-btn">📸 Capture</button>
-          <button class="tb-btn" id="camera-stop-btn">⏹ Stop Camera</button>
+        <h4>📱 Scan Documents</h4>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Each capture opens your device's own camera — flash and focus work as normal. Take one page at a time; they'll queue up below.</p>
+        <input type="file" id="camera-native-input" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="scan-upload-input" accept="image/*" multiple style="display:none">
+        <div class="feat-row">
+          <button class="tb-btn primary" id="camera-capture-btn">📸 Take Photo</button>
+          <button class="tb-btn" id="scan-upload-btn">🖼️ Add from Photos</button>
         </div>
-        <div id="camera-preview-wrap" style="display:none;margin-top:8px">
-          <img id="camera-preview" style="width:100%;border-radius:6px;border:1px solid var(--border)">
-          <button class="tb-btn primary" id="camera-add-page-btn" style="margin-top:6px">➕ Add as PDF Page</button>
+        <div class="feat-row" style="margin-top:8px">
+          <label style="margin:0;font-size:11px;color:var(--text-muted)">Scan mode</label>
+          <select class="feat-input" id="scan-mode" style="width:140px;margin:0">
+            <option value="color">Color (as captured)</option>
+            <option value="enhance" selected>Auto-Enhance</option>
+            <option value="gray">Grayscale</option>
+            <option value="bw">Black &amp; White</option>
+          </select>
+        </div>
+        <div id="scan-queue" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
+        <div class="feat-row" id="scan-actions" style="display:none;margin-top:10px">
+          <button class="tb-btn primary" id="scan-save-new-btn">📄 Save as New PDF</button>
+          <button class="tb-btn" id="scan-add-to-open-btn">➕ Add to Open PDF</button>
+          <button class="tb-btn" id="scan-clear-btn">🗑 Clear</button>
         </div>
       </div>
     </div>
@@ -1728,6 +1770,13 @@ async function ensureCoreLibraries() {
   libsReadyPromise = (async () => {
     const pdfJsLoaded = await loadFirstWorkingSource(LIBRARY_CANDIDATES.pdfjs, () => !!window.pdfjsLib);
     const pdfLibLoaded = await loadFirstWorkingSource(LIBRARY_CANDIDATES.pdflib, () => !!window.PDFLib);
+
+    // Point pdf.js at a real worker script (same folder/CDN the main library loaded from)
+    // so PDF parsing runs on a background thread instead of falling back to pdf.js's
+    // slower "fake worker" (main-thread) mode with no workerSrc configured.
+    if (pdfJsLoaded && window.pdfjsLib?.GlobalWorkerOptions) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfJsLoaded.replace('pdf.min.js', 'pdf.worker.min.js');
+    }
 
     // Optional libraries: best effort only.
     if (!window.XLSX) await loadFirstWorkingSource(LIBRARY_CANDIDATES.xlsx, () => !!window.XLSX);
@@ -3214,9 +3263,10 @@ function attachSigEl(sig) {
   const rh = document.createElement('div'); rh.className = 'sig-resize-h'; el.appendChild(rh);
 
   // Drag
-  el.addEventListener('mousedown', e => {
+  el.addEventListener('pointerdown', e => {
     if (e.target === rh || e.target.closest('.sig-ctrl-btn')) return;
     e.preventDefault(); e.stopPropagation(); el.classList.add('sel');
+    el.setPointerCapture?.(e.pointerId);
     const [sx, sy, sl, st] = [e.clientX, e.clientY, sig.l, sig.t];
     const mv = e2 => {
       const r = container.getBoundingClientRect();
@@ -3224,13 +3274,14 @@ function attachSigEl(sig) {
       sig.t = Math.max(0, Math.min(100 - sig.h, st + (e2.clientY - sy) / r.height * 100));
       el.style.left = sig.l + '%'; el.style.top = sig.t + '%';
     };
-    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+    el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   });
 
   // Resize
-  rh.addEventListener('mousedown', e => {
+  rh.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
+    rh.setPointerCapture?.(e.pointerId);
     const [sx, sw, asp] = [e.clientX, sig.w, sig.w / sig.h];
     const mv = e2 => {
       const r = container.getBoundingClientRect();
@@ -3238,8 +3289,8 @@ function attachSigEl(sig) {
       sig.h = sig.w / asp;
       el.style.width = sig.w + '%'; el.style.height = sig.h + '%';
     };
-    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    const up = () => { rh.removeEventListener('pointermove', mv); rh.removeEventListener('pointerup', up); rh.removeEventListener('pointercancel', up); };
+    rh.addEventListener('pointermove', mv); rh.addEventListener('pointerup', up); rh.addEventListener('pointercancel', up);
   });
 
   document.addEventListener('click', e => { if (!el.contains(e.target)) el.classList.remove('sel'); }, true);
@@ -3288,7 +3339,7 @@ function toggleSubPanel(id, cardEl) {
   const panel = $(id);
   const wasOpen = panel && panel.style.display !== 'none';
   ['sub-pagemgr','sub-addtext','sub-addimage','sub-export-images','sub-merge-pdfs',
-   'sub-split-pdf','sub-pdf-from-images','sub-form-field','sub-ocr-result',
+   'sub-split-pdf','sub-pdf-from-images','sub-blank-pdf','sub-form-field','sub-ocr-result',
    'sub-ocr-tesseract','sub-camera-scan','sub-esign-request','sub-esign-bulk',
    'sub-metadata-sec','sub-metadata-pro','sub-compress','sub-preflight',
    'sub-color-mgmt','sub-watermark','sub-page-numbers'].forEach(pid => {
@@ -3393,13 +3444,14 @@ function placeTextOverlay(container, pi, lPct, tPct) {
   const del = document.createElement('div'); del.className = 'to-del'; del.textContent = '✕';
   del.addEventListener('click', e => { e.stopPropagation(); el.remove(); });
   el.appendChild(inner); el.appendChild(del);
-  el.addEventListener('mousedown', e => {
+  el.addEventListener('pointerdown', e => {
     if (e.target === inner || e.target === del) return;
     e.preventDefault();
+    el.setPointerCapture?.(e.pointerId);
     const [sx, sy, sl, st] = [e.clientX, e.clientY, parseFloat(el.style.left), parseFloat(el.style.top)];
     const mv = e2 => { const cr = container.getBoundingClientRect(); el.style.left = (sl + (e2.clientX-sx)/cr.width*100)+'%'; el.style.top = (st + (e2.clientY-sy)/cr.height*100)+'%'; };
-    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
-    document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+    el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   });
   inner.addEventListener('focus', () => el.classList.add('editing'));
   inner.addEventListener('blur',  () => el.classList.remove('editing'));
@@ -3438,25 +3490,44 @@ function cancelRedactMode() {
   if (mode === 'redact') { mode = 'pen'; setMode('pen'); }
   document.body.classList.remove('redact-mode');
 }
-$('pages-wrapper').addEventListener('mousedown', e => {
+$('pages-wrapper').addEventListener('pointerdown', e => {
   if (mode !== 'redact') return;
   const container = e.target.closest('.page-container'); if (!container) return;
   const canvas = container.querySelector('.ink-layer'); if (!canvas) return;
+  e.preventDefault();
+  canvas.setPointerCapture?.(e.pointerId);
   const pi = +container.dataset.pageIndex, r = canvas.getBoundingClientRect();
-  redactStart = { x: (e.clientX-r.left)*(canvas.width/r.width), y: (e.clientY-r.top)*(canvas.height/r.height), canvas, pi };
+  history[pi].u.push(canvas.toDataURL()); history[pi].r = [];
+  redactStart = { x: (e.clientX-r.left)*(canvas.width/r.width), y: (e.clientY-r.top)*(canvas.height/r.height), canvas, pi, pointerId: e.pointerId, beforeImg: null };
+  const img = new Image();
+  img.onload = () => { if (redactStart) redactStart.beforeImg = img; };
+  img.src = history[pi].u[history[pi].u.length - 1];
 });
-document.addEventListener('mouseup', e => {
-  if (!redactStart || mode !== 'redact') return;
+$('pages-wrapper').addEventListener('pointermove', e => {
+  if (!redactStart || mode !== 'redact' || e.pointerId !== redactStart.pointerId || !redactStart.beforeImg) return;
+  const { canvas, x: sx, y: sy, beforeImg } = redactStart;
+  const r = canvas.getBoundingClientRect();
+  const ex = (e.clientX-r.left)*(canvas.width/r.width), ey = (e.clientY-r.top)*(canvas.height/r.height);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(beforeImg, 0, 0);
+  ctx.save(); ctx.fillStyle = '#000'; ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.fillRect(Math.min(sx,ex), Math.min(sy,ey), Math.abs(ex-sx), Math.abs(ey-sy));
+  ctx.restore();
+});
+function finishRedact(e) {
+  if (!redactStart || mode !== 'redact' || (e.pointerId !== undefined && e.pointerId !== redactStart.pointerId)) return;
   const { canvas, pi, x: sx, y: sy } = redactStart;
   const r = canvas.getBoundingClientRect();
   const ex = (e.clientX-r.left)*(canvas.width/r.width), ey = (e.clientY-r.top)*(canvas.height/r.height);
   const ctx = canvas.getContext('2d');
-  history[pi].u.push(canvas.toDataURL()); history[pi].r = [];
   ctx.save(); ctx.fillStyle = '#000'; ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   ctx.fillRect(Math.min(sx,ex), Math.min(sy,ey), Math.abs(ex-sx), Math.abs(ey-sy));
   ctx.restore();
   redactStart = null;
-});
+}
+document.addEventListener('pointerup', finishRedact);
+document.addEventListener('pointercancel', finishRedact);
 
 /* ════════════════════════════════════════════════════════════════════════════
    CONVERT — all export and create functions
@@ -3693,6 +3764,8 @@ function handleImg2pdfFiles(files) {
 }
 $('do-img2pdf')?.addEventListener('click', async () => {
   if (!img2pdfFileList.length) return;
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) { showToast('PDF engine could not load. Add vendor files or connect to the internet.', 4200); return; }
   showToast('Creating PDF from images…');
   const doc = await PDFLib.PDFDocument.create();
   for (const file of img2pdfFileList) {
@@ -3710,8 +3783,11 @@ $('do-img2pdf')?.addEventListener('click', async () => {
     const page = doc.addPage([img.width, img.height]);
     page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
   }
-  downloadBlob(new Blob([await doc.save()], { type: 'application/pdf' }), 'from-images.pdf', 'application/pdf');
-  showToast('PDF created and downloaded!');
+  const bytes = await doc.save();
+  img2pdfFileList = []; $('img2pdf-list').textContent = ''; $('do-img2pdf').style.display = 'none';
+  $('modal-convert').classList.add('hidden'); document.querySelectorAll('.feat-btn').forEach(b => b.classList.remove('active'));
+  await openGeneratedPdf(bytes, 'from-images.pdf');
+  showToast('PDF created from images — opened for editing. Use Save to download.');
 });
 
 function downloadBlob(blob, filename, type) {
@@ -4397,7 +4473,7 @@ $('do-ocr-tesseract')?.addEventListener('click', async () => {
   }
 });
 
-/* Enhance scan */
+/* Enhance scan — real auto-levels (per-channel histogram stretch), not just a flat contrast bump */
 $('fc-enhance-scan')?.addEventListener('click', async () => {
   if (!pdfDoc) { showToast('Open a PDF first'); return; }
   showToast('Enhancing pages…');
@@ -4406,56 +4482,261 @@ $('fc-enhance-scan')?.addEventListener('click', async () => {
     if (!pdfCanvas) continue;
     const ctx = pdfCanvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, pdfCanvas.width, pdfCanvas.height);
-    const data = imgData.data;
-    // Apply contrast boost + slight sharpening via pixel manipulation
-    for (let j = 0; j < data.length; j += 4) {
-      for (let k = 0; k < 3; k++) {
-        let v = data[j+k];
-        // Contrast: (v - 128) * 1.4 + 128
-        v = Math.min(255, Math.max(0, (v - 128) * 1.4 + 128));
-        data[j+k] = v;
-      }
-    }
+    autoLevels(imgData);
     ctx.putImageData(imgData, 0, 0);
   }
-  showToast('Scan enhanced — contrast boosted on all pages');
+  showToast('Scan enhanced — auto levels applied to all pages');
 });
 
-/* Camera scan */
-let cameraStream = null;
-$('fc-camera-scan')?.addEventListener('click', async () => {
+/* ════════════════════════════════════════════════════════════════════════════
+   IMAGE PROCESSING HELPERS — shared by Enhance Scan, Camera Scan, and Images→PDF.
+   autoLevels() does a real per-channel histogram stretch (clipping the outer 1%
+   of each channel), and applyBW() uses Otsu's method to pick a genuinely good
+   black/white threshold instead of a fixed cutoff — this is what gets scans
+   looking closer to a proper "Adobe Scan"-style document capture.
+════════════════════════════════════════════════════════════════════════════ */
+function autoLevels(imgData) {
+  const data = imgData.data;
+  const hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+  for (let i = 0; i < data.length; i += 4) {
+    hist[0][data[i]]++; hist[1][data[i + 1]]++; hist[2][data[i + 2]]++;
+  }
+  const total = data.length / 4;
+  const lo = [0, 0, 0], hi = [255, 255, 255];
+  for (let c = 0; c < 3; c++) {
+    let cum = 0;
+    for (let v = 0; v < 256; v++) { cum += hist[c][v]; if (cum > total * 0.01) { lo[c] = v; break; } }
+    cum = 0;
+    for (let v = 255; v >= 0; v--) { cum += hist[c][v]; if (cum > total * 0.01) { hi[c] = v; break; } }
+    if (hi[c] <= lo[c]) { lo[c] = 0; hi[c] = 255; }
+  }
+  for (let i = 0; i < data.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      data[i + c] = Math.min(255, Math.max(0, ((data[i + c] - lo[c]) / (hi[c] - lo[c])) * 255));
+    }
+  }
+  return imgData;
+}
+function toGrayscale(imgData) {
+  const data = imgData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    data[i] = data[i + 1] = data[i + 2] = g;
+  }
+  return imgData;
+}
+function otsuThreshold(data) {
+  const hist = new Uint32Array(256);
+  for (let i = 0; i < data.length; i += 4) hist[data[i] | 0]++;
+  const total = data.length / 4;
+  let sum = 0; for (let t = 0; t < 256; t++) sum += t * hist[t];
+  let sumB = 0, wB = 0, varMax = 0, threshold = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]; if (wB === 0) continue;
+    const wF = total - wB; if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const varBetween = wB * wF * (mB - mF) * (mB - mF);
+    if (varBetween > varMax) { varMax = varBetween; threshold = t; }
+  }
+  return threshold;
+}
+function applyBW(imgData) {
+  toGrayscale(imgData);
+  const data = imgData.data;
+  const t = otsuThreshold(data);
+  for (let i = 0; i < data.length; i += 4) {
+    const v = data[i] > t ? 255 : 0;
+    data[i] = data[i + 1] = data[i + 2] = v;
+  }
+  return imgData;
+}
+function rotateCanvasBy(srcCanvas, degrees) {
+  if (!degrees) { const c = document.createElement('canvas'); c.width = srcCanvas.width; c.height = srcCanvas.height; c.getContext('2d').drawImage(srcCanvas, 0, 0); return c; }
+  const rad = (degrees % 360) * Math.PI / 180;
+  const swap = Math.abs(degrees % 180) === 90;
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const out = document.createElement('canvas');
+  out.width = swap ? h : w; out.height = swap ? w : h;
+  const ctx = out.getContext('2d');
+  ctx.translate(out.width / 2, out.height / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(srcCanvas, -w / 2, -h / 2);
+  return out;
+}
+/* Applies rotation + the chosen scan mode to a raw captured canvas, returning a NEW canvas
+   (the original raw capture is left untouched so mode/rotation can be changed non-destructively). */
+function processScanCanvas(rawCanvas, mode, rotation) {
+  const out = rotateCanvasBy(rawCanvas, rotation);
+  if (mode === 'color') return out;
+  const ctx = out.getContext('2d');
+  const imgData = ctx.getImageData(0, 0, out.width, out.height);
+  if (mode === 'enhance') autoLevels(imgData);
+  else if (mode === 'gray') { autoLevels(imgData); toGrayscale(imgData); }
+  else if (mode === 'bw') applyBW(imgData);
+  ctx.putImageData(imgData, 0, 0);
+  return out;
+}
+/* Decodes an image File (from the camera or the photo library) onto a canvas, honouring
+   EXIF orientation — important for camera photos, which are very often tagged rotated. */
+async function loadImageFileToCanvas(file) {
+  let bitmap;
+  try { bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+  catch (e) { bitmap = await createImageBitmap(file); }
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width; canvas.height = bitmap.height;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  return canvas;
+}
+/* Wraps freshly-generated PDF bytes as a File and loads them straight into the viewer,
+   so "create/scan a PDF" actually hands you back an editable document instead of just
+   a download you'd have to re-open yourself. */
+async function openGeneratedPdf(bytes, filename) {
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: 'application/pdf' });
+  const file = new File([blob], filename, { type: 'application/pdf' });
+  await openPdfFile(file);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   CAMERA SCAN — uses the device's OWN camera app via <input capture="environment">
+   rather than an in-page getUserMedia video feed. That means flash/torch, autofocus,
+   HDR and zoom all just work the way they do in the phone's normal Camera app, which
+   a raw web video stream generally can't offer (flash in particular is not reliably
+   controllable from web APIs across browsers). Multiple pages queue up below; each
+   can be rotated, previewed with its scan mode applied, or removed before saving.
+════════════════════════════════════════════════════════════════════════════ */
+let scanQueue = []; // { canvas: <raw captured canvas>, mode, rotation }
+function stopCamera() { /* no-op: kept so existing cleanup call-sites stay harmless — no live stream to stop anymore. */ }
+
+$('fc-camera-scan')?.addEventListener('click', () => {
   toggleSubPanel('sub-camera-scan', $('fc-camera-scan'));
-  if ($('sub-camera-scan').style.display === 'none') { stopCamera(); return; }
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    $('camera-video').srcObject = cameraStream;
-  } catch (err) { showToast('Camera access denied: ' + err.message); }
+  renderScanQueue();
 });
-$('camera-capture-btn')?.addEventListener('click', () => {
-  const video = $('camera-video'), canvas = $('camera-canvas');
-  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  $('camera-preview').src = dataUrl; $('camera-preview-wrap').style.display = '';
-  showToast('Captured! Click "Add as PDF Page" to add it.');
+async function addFilesToScanQueue(fileList) {
+  const files = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  const mode = $('scan-mode')?.value || 'enhance';
+  for (const file of files) {
+    try {
+      const canvas = await loadImageFileToCanvas(file);
+      scanQueue.push({ canvas, mode, rotation: 0 });
+    } catch (err) { showToast('Could not read one of the images: ' + (err?.message || err)); }
+  }
+  renderScanQueue();
+  showToast(`${files.length > 1 ? files.length + ' pages' : 'Page'} added — ${scanQueue.length} total`);
+}
+$('camera-capture-btn')?.addEventListener('click', () => $('camera-native-input')?.click());
+$('camera-native-input')?.addEventListener('change', e => { addFilesToScanQueue(e.target.files); e.target.value = ''; });
+$('scan-upload-btn')?.addEventListener('click', () => $('scan-upload-input')?.click());
+$('scan-upload-input')?.addEventListener('change', e => { addFilesToScanQueue(e.target.files); e.target.value = ''; });
+
+function renderScanQueue() {
+  const wrap = $('scan-queue'); if (!wrap) return;
+  wrap.innerHTML = '';
+  scanQueue.forEach((entry, idx) => {
+    const item = document.createElement('div');
+    item.style.cssText = 'width:72px;flex-shrink:0';
+    const thumbWrap = document.createElement('div');
+    thumbWrap.style.cssText = 'position:relative';
+    const img = document.createElement('img');
+    img.src = processScanCanvas(entry.canvas, entry.mode, entry.rotation).toDataURL('image/jpeg', 0.7);
+    img.style.cssText = 'width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;border:1px solid var(--border);display:block';
+    const badge = document.createElement('div');
+    badge.textContent = idx + 1;
+    badge.style.cssText = 'position:absolute;top:2px;left:2px;background:rgba(0,0,0,.65);color:#fff;font-size:9px;line-height:1;padding:2px 4px;border-radius:3px;font-family:var(--mono)';
+    thumbWrap.appendChild(img); thumbWrap.appendChild(badge);
+    item.appendChild(thumbWrap);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:2px;margin-top:3px';
+    const rotBtn = document.createElement('button');
+    rotBtn.className = 'tb-btn icon-only'; rotBtn.textContent = '↻'; rotBtn.title = 'Rotate 90°';
+    rotBtn.style.cssText = 'font-size:12px;padding:2px 0;flex:1';
+    rotBtn.addEventListener('click', () => { entry.rotation = (entry.rotation + 90) % 360; renderScanQueue(); });
+    const delBtn = document.createElement('button');
+    delBtn.className = 'tb-btn icon-only'; delBtn.textContent = '🗑'; delBtn.title = 'Remove page';
+    delBtn.style.cssText = 'font-size:12px;padding:2px 0;flex:1';
+    delBtn.addEventListener('click', () => { scanQueue.splice(idx, 1); renderScanQueue(); });
+    row.appendChild(rotBtn); row.appendChild(delBtn);
+    item.appendChild(row);
+    wrap.appendChild(item);
+  });
+  const actions = $('scan-actions');
+  if (actions) actions.style.display = scanQueue.length ? 'flex' : 'none';
+  const addOpenBtn = $('scan-add-to-open-btn');
+  if (addOpenBtn) addOpenBtn.style.display = pdfDoc ? '' : 'none';
+}
+$('scan-mode')?.addEventListener('change', () => { renderScanQueue(); }); // re-preview existing pages, doesn't retroactively change already-queued mode
+
+async function buildPdfFromScanQueue(baseLibDoc) {
+  const doc = baseLibDoc || await PDFLib.PDFDocument.create();
+  for (const entry of scanQueue) {
+    const processed = processScanCanvas(entry.canvas, entry.mode, entry.rotation);
+    const jpgAb = await (await fetch(processed.toDataURL('image/jpeg', 0.92))).arrayBuffer();
+    const img = await doc.embedJpg(jpgAb);
+    const page = doc.addPage([img.width, img.height]);
+    page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+  }
+  return doc;
+}
+$('scan-save-new-btn')?.addEventListener('click', async () => {
+  if (!scanQueue.length) return;
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) { showToast('PDF engine could not load. Add vendor files or connect to the internet.', 4200); return; }
+  showToast('Building PDF from scans…');
+  const doc = await buildPdfFromScanQueue();
+  const bytes = await doc.save();
+  scanQueue = []; renderScanQueue();
+  $('modal-ocr').classList.add('hidden'); document.querySelectorAll('.feat-btn').forEach(b => b.classList.remove('active'));
+  await openGeneratedPdf(bytes, 'scanned-document.pdf');
+  showToast('Scanned PDF created — opened for editing. Use Save to download.');
 });
-$('camera-stop-btn')?.addEventListener('click', stopCamera);
-$('camera-add-page-btn')?.addEventListener('click', async () => {
-  const src = $('camera-preview').src; if (!src || !pdfDoc) { showToast('Capture an image and open a PDF first'); return; }
-  // Add camera image as a new page using pdf-lib
+$('scan-add-to-open-btn')?.addEventListener('click', async () => {
+  if (!scanQueue.length) return;
+  if (!pdfDoc) { showToast('Open a PDF first, or use "Save as New PDF"'); return; }
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) { showToast('PDF engine could not load. Add vendor files or connect to the internet.', 4200); return; }
+  showToast('Adding scanned pages…');
   const raw = await pdfDoc.getData();
   const libDoc = await PDFLib.PDFDocument.load(raw);
-  const pngAb = await (await fetch(src)).arrayBuffer();
-  const img = await libDoc.embedJpg(pngAb);
-  const page = libDoc.addPage([img.width, img.height]);
-  page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-  downloadBlob(new Blob([await libDoc.save()], { type: 'application/pdf' }), 'with-camera-page.pdf', 'application/pdf');
-  showToast('New page saved to downloaded PDF!');
+  await buildPdfFromScanQueue(libDoc);
+  const bytes = await libDoc.save();
+  const filename = $('status-file')?.textContent || 'document-with-scans.pdf';
+  scanQueue = []; renderScanQueue();
+  $('modal-ocr').classList.add('hidden'); document.querySelectorAll('.feat-btn').forEach(b => b.classList.remove('active'));
+  await openGeneratedPdf(bytes, filename);
+  showToast('Scanned pages added — opened for editing. Use Save to download.');
 });
-function stopCamera() {
-  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
-  const v = $('camera-video'); if (v) v.srcObject = null;
-}
+$('scan-clear-btn')?.addEventListener('click', () => { scanQueue = []; renderScanQueue(); });
+
+/* ════════════════════════════════════════════════════════════════════════════
+   BLANK PDF — start a brand-new document from scratch (pick size/orientation/
+   page count), opened straight into the editor so you can start adding content.
+════════════════════════════════════════════════════════════════════════════ */
+const BLANK_PDF_SIZES = { letter: [612, 792], a4: [595.28, 841.89], legal: [612, 1008], square: [700, 700] };
+$('fc-blank-pdf')?.addEventListener('click', () => toggleSubPanel('sub-blank-pdf', $('fc-blank-pdf')));
+$('do-blank-pdf')?.addEventListener('click', async () => {
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) { showToast('PDF engine could not load. Add vendor files or connect to the internet.', 4200); return; }
+  const [baseW, baseH] = BLANK_PDF_SIZES[$('blank-pdf-size').value] || BLANK_PDF_SIZES.letter;
+  const landscape = $('blank-pdf-orientation').value === 'landscape';
+  const w = landscape ? Math.max(baseW, baseH) : Math.min(baseW, baseH);
+  const h = landscape ? Math.min(baseW, baseH) : Math.max(baseW, baseH);
+  const count = Math.min(200, Math.max(1, +$('blank-pdf-pages').value || 1));
+  const bgHex = $('blank-pdf-bg').value || '#ffffff';
+  const r = parseInt(bgHex.slice(1, 3), 16) / 255, g = parseInt(bgHex.slice(3, 5), 16) / 255, b = parseInt(bgHex.slice(5, 7), 16) / 255;
+  showToast('Creating blank PDF…');
+  const doc = await PDFLib.PDFDocument.create();
+  const isWhite = r > 0.995 && g > 0.995 && b > 0.995;
+  for (let i = 0; i < count; i++) {
+    const page = doc.addPage([w, h]);
+    if (!isWhite) page.drawRectangle({ x: 0, y: 0, width: w, height: h, color: PDFLib.rgb(r, g, b) });
+  }
+  const bytes = await doc.save();
+  $('modal-convert').classList.add('hidden'); document.querySelectorAll('.feat-btn').forEach(b => b.classList.remove('active'));
+  await openGeneratedPdf(bytes, `blank-${count}page${count > 1 ? 's' : ''}.pdf`);
+  showToast('Blank PDF created — start editing! Use Save to download.');
+});
 
 /* ════════════════════════════════════════════════════════════════════════════
    APP SETTINGS — fullscreen, offline status, local Anthropic API key
@@ -4824,6 +5105,22 @@ window.addEventListener('beforeinstallprompt', e => {
   deferredInstallPrompt = e;
   showToast('This app can be installed — use your browser\'s Install option', 4000);
 });
+
+/* Warn before closing/reloading with edits that haven't been saved/downloaded yet —
+   there's no autosave or cloud backup here, so a stray reload would otherwise lose work. */
+function hasUnsavedEdits() {
+  if (!pdfDoc) return false;
+  if (annotatedPages.size > 0) return true;
+  if (history.some(h => h && h.u && h.u.length > 0)) return true;
+  if (document.querySelectorAll('.text-overlay, .placed-sig, .form-field-overlay:not(.native-field)').length > 0) return true;
+  return false;
+}
+window.addEventListener('beforeunload', e => {
+  if (!hasUnsavedEdits()) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
 </script>
 </body>
 </html>

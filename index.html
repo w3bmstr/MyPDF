@@ -1309,6 +1309,28 @@
     }
 
   
+    .float-save-bar {
+      display: none;
+      position: fixed;
+      right: 16px;
+      bottom: 24px;
+      z-index: 190;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px 10px 16px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--accent-dim);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.45);
+      font-size: 12.5px;
+      color: var(--text);
+      animation: navPop .16s ease-out;
+    }
+    .float-save-bar.visible { display: flex; }
+    .float-save-bar strong { color: var(--accent-soft); font-weight: 650; }
+    @media (max-width: 700px) {
+      .float-save-bar { left: 12px; right: 12px; bottom: 160px; justify-content: space-between; }
+    }
     .scan-next-chip {
       display: none;
       position: fixed;
@@ -1356,12 +1378,12 @@
 
   <!-- Row 1 -->
   <div class="topbar" role="toolbar" aria-label="File operations">
-    <span class="topbar-title">PDF Editor</span>
+    <span class="topbar-title" title="Private PDF desk — offline capable">PDF Desk</span>
     <div class="top-divider"></div>
     <input type="file" id="file-input" accept="application/pdf" style="display:none">
     <button class="tb-btn" id="open-btn">📂 Open</button>
-    <button class="tb-btn" id="save-btn">💾 Save</button>
-    <button class="tb-btn" id="export-btn">⬇️ Export</button>
+    <button class="tb-btn" id="save-btn" title="Save PDF with annotations (Ctrl+S)">💾 Save</button>
+    <button class="tb-btn" id="export-btn" title="Export a copy of the PDF">⬇️ Export</button>
     <button class="tb-btn danger" id="clear-data-btn" title="Clear all form field values" style="display:none">🗑️ Clear Data</button>
     <div class="topbar-spacer"></div>
     <div class="top-divider"></div>
@@ -1506,17 +1528,18 @@
     <div class="empty-state" id="empty-state">
       <div class="es-card">
         <div class="es-icon">📄</div>
-        <h2>PDF Viewer + Editor</h2>
-        <p class="es-sub">Open a document to annotate, sign, fill forms, and export — everything stays on your device.</p>
+        <h2>Your private PDF desk</h2>
+        <p class="es-sub">Annotate, sign, scan pages, fill forms — everything stays on this device. Nothing is uploaded.</p>
         <div class="es-actions">
           <button class="tb-btn primary" id="empty-state-open-btn">📂 Open PDF</button>
-          <button class="tb-btn" id="empty-state-blank-btn">🆕 Blank PDF</button>
+          <button class="tb-btn primary" id="empty-state-scan-btn" style="background:linear-gradient(135deg,#2d6cdf,#4f8ef7)">📷 Scan pages</button>
+          <button class="tb-btn" id="empty-state-blank-btn">🆕 Blank</button>
         </div>
         <div class="recent-files" id="recent-files-wrap" style="display:none">
           <h4>Recent</h4>
           <div id="recent-files-list"></div>
         </div>
-        <p class="es-hint">Drop a file anywhere · <kbd>?</kbd> shortcuts · <kbd>Ctrl+O</kbd> open</p>
+        <p class="es-hint">Drop a PDF anywhere · <kbd>T</kbd> tools · <kbd>F</kbd> features · <kbd>?</kbd> shortcuts</p>
       </div>
     </div>
     <div class="drop-overlay" id="drop-overlay"><div class="drop-overlay-inner">📄 Drop PDF to open</div></div>
@@ -2780,6 +2803,9 @@ $('empty-state-open-btn')?.addEventListener('click', () => $('file-input').click
 $('empty-state-blank-btn')?.addEventListener('click', async () => {
   await createAndOpenBlankPdf(1, 'untitled.pdf');
   showToast('Blank PDF ready — scan or draw', 2400, 'success');
+});
+$('empty-state-scan-btn')?.addEventListener('click', async () => {
+  await addScannedPageAtEnd();
 });
 
 /* Recent files (metadata only — privacy-friendly, no file bytes stored) */
@@ -4211,7 +4237,9 @@ async function saveAsPDF() {
     a.download = hasInkOrSigs ? 'edited.pdf' : 'filled-form.pdf';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    showToast('Saved · ' + (pdfDoc?.numPages || '?') + ' page(s)', 2400, 'success');
+    const n = pdfDoc?.numPages || 0;
+    showToast('Saved ' + n + ' page' + (n === 1 ? '' : 's') + ' to your downloads', 2800, 'success');
+    try { hideScanNextChip(); } catch (_) {}
   } catch (err) {
     alert('Failed to save PDF: ' + (err?.message || err));
     console.error('Save PDF error:', err);
@@ -5492,24 +5520,56 @@ function showScanNextChip(pageNum, total) {
     chip.innerHTML = `
       <span class="snc-text"></span>
       <button type="button" class="tb-btn primary" id="scan-next-btn">📷 Scan next</button>
+      <button type="button" class="tb-btn primary" id="scan-save-btn">💾 Save</button>
       <button type="button" class="tb-btn" id="scan-done-btn">Done</button>`;
     document.body.appendChild(chip);
     chip.querySelector('#scan-next-btn')?.addEventListener('click', async () => {
       hideScanNextChip();
       await addScannedPageAtEnd();
     });
+    chip.querySelector('#scan-save-btn')?.addEventListener('click', async () => {
+      hideScanNextChip();
+      await saveAsPDF();
+    });
     chip.querySelector('#scan-done-btn')?.addEventListener('click', () => {
       hideScanNextChip();
-      showToast('Scans kept in document — Save when ready', 2800, 'success');
+      showToast('All scans are in the document — use Save anytime', 2800, 'success');
+      try { refreshDirtyUi?.(); } catch (_) {}
     });
   }
   const t = chip.querySelector('.snc-text');
-  if (t) t.textContent = `Page ${pageNum} of ${total} saved in document`;
+  if (t) t.textContent = `${total} page${total===1?'':'s'} in document · last: #${pageNum}`;
   chip.classList.add('visible');
 }
 function hideScanNextChip() {
   $('scan-next-chip')?.classList.remove('visible');
 }
+
+function ensureFloatSaveBar() {
+  let bar = $('float-save-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'float-save-bar';
+    bar.className = 'float-save-bar';
+    bar.innerHTML = `<strong>Unsaved changes</strong><button type="button" class="tb-btn primary" id="float-save-btn">💾 Save PDF</button>`;
+    document.body.appendChild(bar);
+    bar.querySelector('#float-save-btn')?.addEventListener('click', () => saveAsPDF());
+  }
+  return bar;
+}
+function refreshDirtyUi() {
+  const dirty = typeof hasUnsavedEdits === 'function' && hasUnsavedEdits();
+  const saveBtn = $('save-btn');
+  if (saveBtn) saveBtn.classList.toggle('save-btn-dirty', !!dirty);
+  const st = $('status-dirty');
+  if (st) st.style.display = dirty ? '' : 'none';
+  const bar = ensureFloatSaveBar();
+  // Don't fight the scan chip on mobile
+  const scanOpen = $('scan-next-chip')?.classList.contains('visible');
+  bar.classList.toggle('visible', !!dirty && !scanOpen && !!pdfDoc);
+}
+// Keep dirty UI in sync periodically after interactions
+setInterval(() => { try { refreshDirtyUi(); } catch (_) {} }, 2000);
 
 async function addBlankPageAtEnd() {
   if (!pdfDoc) { showToast('Open a PDF first'); return; }
@@ -7554,7 +7614,12 @@ function closeTransientUi() {
 document.addEventListener('keydown', e => {
   // Modal sig-draw undo
   if (!$('sig-backdrop')?.classList.contains('hidden')) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); $('sig-undo-draw')?.click(); return; }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+    e.preventDefault();
+    saveAsPDF();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); $('sig-undo-draw')?.click(); return; }
   }
   if (e.key === 'Escape') {
     if (!$('shortcuts-backdrop')?.classList.contains('hidden')) { closeShortcutsPanel(); return; }
@@ -7710,6 +7775,19 @@ window.addEventListener('beforeunload', e => {
   e.preventDefault();
   e.returnValue = '';
 });
+
+
+/* First-run tip — once */
+try {
+  if (!localStorage.getItem('pdfeditor_seen_tip_v1')) {
+    setTimeout(() => {
+      if (!pdfDoc) {
+        showToast('Tip: Scan pages, annotate, then Save — files never leave your device', 5000, 'info');
+      }
+      try { localStorage.setItem('pdfeditor_seen_tip_v1', '1'); } catch (_) {}
+    }, 900);
+  }
+} catch (_) {}
 
 </script>
 </body>

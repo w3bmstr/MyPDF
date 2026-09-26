@@ -1187,6 +1187,7 @@
       body { flex-direction: column; height: 100dvh; overflow: hidden; }
 
       .main { margin-bottom: 58px; flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+      body:has(.mobile-page-strip.visible) .main { margin-bottom: calc(58px + 88px); }
       #pages-wrapper {
         align-items: flex-start;
         width: max-content;
@@ -1246,9 +1247,98 @@
       .sig-name-input { width: 100%; }
       .sig-footer-right { width: 100%; justify-content: flex-end; }
     }
+  
+    /* Mobile page filmstrip — tappable page previews above bottom tab bar */
+    .mobile-page-strip {
+      display: none;
+      position: fixed;
+      left: 0; right: 0;
+      bottom: 58px;
+      z-index: 95;
+      height: 88px;
+      padding: 8px 10px 6px;
+      box-sizing: border-box;
+      background: linear-gradient(180deg, rgba(15,17,23,.55), var(--bg-base) 35%);
+      border-top: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      overflow-x: auto;
+      overflow-y: hidden;
+      gap: 8px;
+      align-items: flex-end;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .mobile-page-strip::-webkit-scrollbar { display: none; }
+    .mobile-page-strip.visible { display: flex; }
+    .mps-thumb {
+      flex: 0 0 auto;
+      width: 52px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 9px;
+    }
+    .mps-thumb canvas,
+    .mps-thumb img {
+      width: 48px;
+      height: 64px;
+      object-fit: contain;
+      background: #fff;
+      border-radius: 5px;
+      border: 2px solid var(--border);
+      box-shadow: 0 2px 8px rgba(0,0,0,.35);
+      display: block;
+    }
+    .mps-thumb.active canvas,
+    .mps-thumb.active img {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 4px 14px rgba(79,142,247,.4);
+    }
+    .mps-thumb.active { color: var(--accent-soft); font-weight: 700; }
+    body.light-mode .mobile-page-strip {
+      background: linear-gradient(180deg, rgba(255,255,255,.75), var(--bg-base) 40%);
+    }
+
+  
+    .scan-next-chip {
+      display: none;
+      position: fixed;
+      left: 50%;
+      bottom: 100px;
+      transform: translateX(-50%);
+      z-index: 200;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--bg-elev-2);
+      border: 1px solid var(--accent-dim);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.5);
+      font-size: 12.5px;
+      color: var(--text);
+      max-width: min(96vw, 420px);
+    }
+    .scan-next-chip.visible { display: flex; flex-wrap: wrap; justify-content: center; }
+    .scan-next-chip .snc-text { font-weight: 600; color: var(--accent-soft); }
+    @media (max-width: 700px) {
+      .scan-next-chip { bottom: 160px; }
+    }
+
   </style>
 </head>
 <body>
+
+<!-- Mobile page filmstrip (thumbnails above bottom tabs) -->
+<div class="mobile-page-strip" id="mobile-page-strip" role="navigation" aria-label="Page thumbnails" hidden></div>
 
 <!-- SIDEBAR -->
 <nav class="sidebar" role="navigation" aria-label="Panel navigation">
@@ -2687,17 +2777,9 @@ ensureBackGuard();
 /* ══ FILE OPEN ══════════════════════════════════════════════════════════════ */
 $('open-btn').addEventListener('click', () => $('file-input').click());
 $('empty-state-open-btn')?.addEventListener('click', () => $('file-input').click());
-$('empty-state-blank-btn')?.addEventListener('click', () => {
-  // Open Advanced → Blank PDF panel if present, else synthesize a quick blank
-  const btn = $('fc-blank-pdf') || $('feat-pro');
-  if ($('modal-pro')) {
-    document.querySelectorAll('.feat-btn').forEach(b => b.classList.remove('active'));
-    $('modal-pro').classList.remove('hidden');
-    $('feat-pro')?.classList.add('active');
-    $('fc-blank-pdf')?.click();
-  } else {
-    showToast('Use Advanced → Blank PDF to create a document', 3000);
-  }
+$('empty-state-blank-btn')?.addEventListener('click', async () => {
+  await createAndOpenBlankPdf(1, 'untitled.pdf');
+  showToast('Blank PDF ready — scan or draw', 2400, 'success');
 });
 
 /* Recent files (metadata only — privacy-friendly, no file bytes stored) */
@@ -2817,6 +2899,7 @@ async function openPdfFile(file, opts = {}) {
     if (file.name) $('status-file').textContent = file.name;
     if (file.size) $('status-size').textContent = (file.size / 1024).toFixed(1) + ' KB';
     if (!preserve) {
+      try { hideScanNextChip(); } catch (_) {}
       _docStructDirty = false;
       try { rememberRecentFile(file); } catch (_) {}
       history    = loadedPages.map(() => ({ u: [], r: [] }));
@@ -2947,6 +3030,7 @@ async function renderAll(snapshots = null) {
     pageObserver.observe(wrap);
   }
   $('thumbs').style.display = showThumbRail && navItems[0].btn?.getAttribute('aria-current') === 'page' ? '' : 'none';
+  try { refreshMobilePageStrip(); } catch (_) {}
   placedSigs.forEach(s => attachSigEl(s));
   // Reset page history when a document is freshly rendered from open
   if (!pageHistory.length && loadedPages.length) {
@@ -3324,6 +3408,7 @@ function setActiveThumb(idx) {
   });
   thumbCanvases.forEach((t, i) => t.classList.toggle('active', i === idx));
   currentPageIdx = idx;
+  try { syncMobilePageStripActive(idx); } catch (_) {}
   const activeWrap = document.querySelector(`#thumbs .thumb-wrap[data-index="${idx}"]`) || thumbCanvases[idx];
   if (activeWrap?.scrollIntoView) {
     try { activeWrap.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (_) {}
@@ -4054,8 +4139,13 @@ async function saveAsPDF() {
         ctx.restore();
       });
     });
-    const raw    = await pdfDoc.getData();
-    const libDoc = await PDFLib.PDFDocument.load(raw);
+    let raw;
+    if (window._pdfSourceBytes && window._pdfSourceBytes.byteLength) {
+      raw = window._pdfSourceBytes.slice();
+    } else {
+      raw = await pdfDoc.getData();
+    }
+    const libDoc = await PDFLib.PDFDocument.load(raw, { ignoreEncryption: true });
 
     // Fill native AcroForm fields from the interactive HTML overlays
     try {
@@ -4999,7 +5089,85 @@ function refreshPageMgrViews() {
   if ($('sub-pagemgr') && $('sub-pagemgr').style.display !== 'none') populatePageMgrInto('page-mgr-grid');
   if ($('mobile-page-sheet')?.classList.contains('open')) populatePageMgrInto('mps-grid');
   updatePageMgrBulkUi();
+  try { refreshMobilePageStrip(); } catch (_) {}
 }
+
+/** Bottom filmstrip of page previews on mobile — tap to jump between pages */
+function refreshMobilePageStrip() {
+  const strip = $('mobile-page-strip');
+  if (!strip) return;
+  const isMobile = window.matchMedia('(max-width: 700px)').matches;
+  const n = thumbCanvases.length || loadedPages.length || 0;
+  if (!isMobile || !pdfDoc || n < 1) {
+    strip.classList.remove('visible');
+    strip.hidden = true;
+    strip.innerHTML = '';
+    return;
+  }
+  strip.hidden = false;
+  strip.classList.add('visible');
+  strip.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mps-thumb' + (i === currentPageIdx ? ' active' : '');
+    btn.dataset.index = String(i);
+    btn.setAttribute('aria-label', 'Go to page ' + (i + 1));
+    btn.setAttribute('aria-current', i === currentPageIdx ? 'page' : 'false');
+    const src = thumbCanvases[i];
+    if (src && src.width) {
+      try {
+        const c = document.createElement('canvas');
+        const maxW = 48, maxH = 64;
+        const sc = Math.min(maxW / src.width, maxH / src.height, 1);
+        c.width = Math.max(1, Math.round(src.width * sc));
+        c.height = Math.max(1, Math.round(src.height * sc));
+        c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+        btn.appendChild(c);
+      } catch (_) {
+        const ph = document.createElement('div');
+        ph.style.cssText = 'width:48px;height:64px;border-radius:5px;background:var(--bg-raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text)';
+        ph.textContent = String(i + 1);
+        btn.appendChild(ph);
+      }
+    } else {
+      const ph = document.createElement('div');
+      ph.style.cssText = 'width:48px;height:64px;border-radius:5px;background:var(--bg-raised);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text)';
+      ph.textContent = String(i + 1);
+      btn.appendChild(ph);
+    }
+    const lbl = document.createElement('span');
+    lbl.textContent = String(i + 1);
+    btn.appendChild(lbl);
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      scrollToPage(i, { behavior: 'smooth' });
+    });
+    frag.appendChild(btn);
+  }
+  strip.appendChild(frag);
+  const active = strip.querySelector('.mps-thumb.active');
+  if (active) {
+    try { active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+  }
+}
+
+function syncMobilePageStripActive(idx) {
+  const strip = $('mobile-page-strip');
+  if (!strip || !strip.classList.contains('visible')) return;
+  strip.querySelectorAll('.mps-thumb').forEach((el, i) => {
+    const on = i === idx;
+    el.classList.toggle('active', on);
+    el.setAttribute('aria-current', on ? 'page' : 'false');
+  });
+  const active = strip.querySelector('.mps-thumb.active');
+  if (active) {
+    try { active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (_) {}
+  }
+}
+
+window.addEventListener('resize', () => { try { refreshMobilePageStrip(); } catch (_) {} });
 
 function openAddPageMenu(anchorEl) {
   document.getElementById('page-mgr-add-menu')?.remove();
@@ -5245,6 +5413,104 @@ async function appendImagePageToPdfDoc(doc, jpgAb, pixelW, pixelH) {
   return page;
 }
 
+
+/** Create a brand-new blank PDF (letter) and open it. */
+async function createAndOpenBlankPdf(pageCount = 1, filename = 'scan.pdf') {
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) {
+    showToast('PDF engine could not load.', 4000, 'error');
+    return false;
+  }
+  const doc = await PDFLib.PDFDocument.create();
+  for (let i = 0; i < Math.max(1, pageCount); i++) doc.addPage([612, 792]);
+  const bytes = await doc.save({ useObjectStreams: false });
+  window._pdfSourceBytes = new Uint8Array(bytes);
+  await openGeneratedPdf(bytes, filename, { preserve: false });
+  return true;
+}
+
+/** Ensure a PDF is open before scanning. Starts a new doc if needed. */
+async function ensurePdfOpenForScan() {
+  if (pdfDoc) return true;
+  showToast('Starting a new document for your scans…', 2000, 'info');
+  return createAndOpenBlankPdf(0, 'scans.pdf'); // 0 pages → empty doc; first scan adds page 1
+}
+
+/** Create empty PDF with zero pages (first scan becomes page 1). */
+async function createAndOpenEmptyPdf(filename = 'scans.pdf') {
+  const libsReady = await ensureCoreLibraries();
+  if (!libsReady || !window.PDFLib) {
+    showToast('PDF engine could not load.', 4000, 'error');
+    return false;
+  }
+  const doc = await PDFLib.PDFDocument.create();
+  const bytes = await doc.save({ useObjectStreams: false });
+  window._pdfSourceBytes = new Uint8Array(bytes);
+  // Open via pdf.js — empty PDF may have 0 pages; handle that
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const file = new File([blob], filename, { type: 'application/pdf' });
+  // Minimal open without requiring pages
+  const libs2 = await ensureCoreLibraries();
+  if (!window.pdfjsLib) return false;
+  const buf = await file.arrayBuffer();
+  try {
+    const docJs = await pdfjsLib.getDocument({ data: buf, disableWorker: true }).promise;
+    pdfDoc = docJs;
+    window._pdfSourceBytes = new Uint8Array(buf);
+    loadedPages = [];
+    for (let i = 1; i <= pdfDoc.numPages; i++) loadedPages.push(await pdfDoc.getPage(i));
+    const es = $('empty-state'); if (es) es.style.display = 'none';
+    $('total-pages').textContent = String(pdfDoc.numPages || 0);
+    if (file.name) $('status-file').textContent = file.name;
+    history = loadedPages.map(() => ({ u: [], r: [] }));
+    placedSigs = [];
+    annotatedPages = new Map();
+    pageHistory = []; pageHistoryIdx = -1;
+    _docStructDirty = false;
+    if (pdfDoc.numPages > 0) await renderAll();
+    else {
+      // Clear viewer for empty doc
+      $('pages-wrapper').innerHTML = '';
+      pageContainers = []; inkCanvases = []; thumbCanvases = [];
+      try { refreshMobilePageStrip(); } catch (_) {}
+    }
+    try { updateNavButtonStates?.(); } catch (_) {}
+    return true;
+  } catch (err) {
+    console.error(err);
+    // Fallback: one blank page
+    return createAndOpenBlankPdf(1, filename);
+  }
+}
+
+function showScanNextChip(pageNum, total) {
+  let chip = $('scan-next-chip');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.id = 'scan-next-chip';
+    chip.className = 'scan-next-chip';
+    chip.innerHTML = `
+      <span class="snc-text"></span>
+      <button type="button" class="tb-btn primary" id="scan-next-btn">📷 Scan next</button>
+      <button type="button" class="tb-btn" id="scan-done-btn">Done</button>`;
+    document.body.appendChild(chip);
+    chip.querySelector('#scan-next-btn')?.addEventListener('click', async () => {
+      hideScanNextChip();
+      await addScannedPageAtEnd();
+    });
+    chip.querySelector('#scan-done-btn')?.addEventListener('click', () => {
+      hideScanNextChip();
+      showToast('Scans kept in document — Save when ready', 2800, 'success');
+    });
+  }
+  const t = chip.querySelector('.snc-text');
+  if (t) t.textContent = `Page ${pageNum} of ${total} saved in document`;
+  chip.classList.add('visible');
+}
+function hideScanNextChip() {
+  $('scan-next-chip')?.classList.remove('visible');
+}
+
 async function addBlankPageAtEnd() {
   if (!pdfDoc) { showToast('Open a PDF first'); return; }
   if (_pageStructBusy) { showToast('Please wait…', 1500, 'info'); return; }
@@ -5256,22 +5522,89 @@ async function addBlankPageAtEnd() {
 }
 
 async function addScannedPageAtEnd() {
-  if (!pdfDoc) { showToast('Open a PDF first'); return; }
   if (_pageStructBusy) { showToast('Please wait…', 1500, 'info'); return; }
+
   const file = await pickFileOnce({ accept: 'image/*', capture: 'environment' });
   if (!file) return;
+
   try {
     showLoadOverlay('Processing scan…');
     const canvas = await loadImageFileToCanvas(file);
-    const processed = processScanCanvas(canvas, $('scan-mode')?.value || 'enhance', 0);
+    if (!canvas || !canvas.width) throw new Error('Could not read photo');
+    const mode = $('scan-mode')?.value || 'enhance';
+    const processed = processScanCanvas(canvas, mode, 0);
     const { jpgAb, width, height } = await rasterToJpgArrayBuffer(processed, 0.9);
-    hideLoadOverlay();
-    const ok = await rebuildAndReloadPreserving(async (doc) => {
-      await appendImagePageToPdfDoc(doc, jpgAb, width, height);
-    }, 'Scanned page added', { overlayText: 'Adding scanned page…' });
-    if (!ok) showToast('Scan was not added — try again', 3000, 'error');
+    if (!jpgAb || !jpgAb.byteLength) throw new Error('Could not encode scan');
+
+    const libsReady = await ensureCoreLibraries();
+    if (!libsReady || !window.PDFLib) {
+      hideLoadOverlay();
+      showToast('PDF engine could not load.', 4000, 'error');
+      return;
+    }
+
+    // How many pages exist in the authoritative byte copy?
+    let pageCount = 0;
+    if (window._pdfSourceBytes && window._pdfSourceBytes.byteLength) {
+      try {
+        const probe = await PDFLib.PDFDocument.load(window._pdfSourceBytes.slice(), { ignoreEncryption: true });
+        pageCount = probe.getPageCount();
+      } catch (_) {
+        pageCount = pdfDoc?.numPages || 0;
+      }
+    } else {
+      pageCount = pdfDoc?.numPages || 0;
+    }
+
+    let ok = false;
+
+    if (!pdfDoc || pageCount === 0) {
+      // First scan becomes page 1 of a brand-new document
+      showLoadOverlay('Creating document from scan…');
+      _pageStructBusy = true;
+      window._suppressFormToasts = true;
+      try {
+        const doc = await PDFLib.PDFDocument.create();
+        await appendImagePageToPdfDoc(doc, jpgAb, width, height);
+        const bytes = await doc.save({ useObjectStreams: false });
+        window._pdfSourceBytes = new Uint8Array(bytes);
+        _docStructDirty = true;
+        await openGeneratedPdf(bytes, 'scans.pdf', { preserve: false });
+        ok = !!(pdfDoc && pdfDoc.numPages >= 1);
+      } finally {
+        _pageStructBusy = false;
+        window._suppressFormToasts = false;
+        hideLoadOverlay();
+      }
+    } else {
+      // Append as next page — chains off _pdfSourceBytes
+      hideLoadOverlay();
+      ok = await rebuildAndReloadPreserving(async (doc) => {
+        await appendImagePageToPdfDoc(doc, jpgAb, width, height);
+      }, 'Scanned page added', { overlayText: 'Adding scanned page…' });
+    }
+
+    if (!ok) {
+      showToast('Scan was not added — try again', 3000, 'error');
+      return;
+    }
+
+    const total = pdfDoc?.numPages || 0;
+    const newIdx = Math.max(0, total - 1);
+    try {
+      updatePageNum(newIdx + 1);
+      setActiveThumb(newIdx);
+      scrollToPage(newIdx, { behavior: 'smooth' });
+    } catch (_) {}
+    try { refreshMobilePageStrip(); } catch (_) {}
+    try { refreshPageMgrViews(); } catch (_) {}
+    try { refreshDirtyUi?.(); } catch (_) {}
+    showScanNextChip(newIdx + 1, total);
+    showToast(`Scan ${newIdx + 1} of ${total} in document — Save when finished`, 3200, 'success');
   } catch (err) {
     hideLoadOverlay();
+    _pageStructBusy = false;
+    window._suppressFormToasts = false;
     console.error(err);
     showToast('Could not process scan: ' + (err?.message || err), 4000, 'error');
   }
